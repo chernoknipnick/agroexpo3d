@@ -255,10 +255,10 @@ function quizAsk(i){
 function sheetHelp(){
   const K=(ks,t)=>`<span>${ks.map(k=>`<kbd>${k}</kbd>`).join('')}</span><span>${t}</span>`;
   openSheet('help','Клавиши',`<div class="eyebrow">Павильон</div><div class="keys">${[K(['W','A','S','D'],'идти, камера сама разворачивается за вами'),K(['←','→'],'повернуть камеру'),K(['↑','↓'],'приблизить, отдалить'),K(['Shift'],'бег'),K(['Space'],'прыжок'),K(['E'],'действие рядом'),K(['I'],'осмотр ближайшего трактора'),K(['C'],'вид камеры'),K(['M'],'мини-карта')].join('')}</div>
-  <div class="eyebrow">Меню</div><div class="keys">${[K(['Q'],'квесты'),K(['R'],'рейтинг'),K(['T'],'навигация и телепорт'),K(['B'],'бонусы'),K(['F'],'моя ферма'),K(['G'],'дашборд'),K(['N'],'звук вкл/выкл'),K(['1','…','9'],'кнопки в открытой панели'),K(['Esc'],'закрыть')].join('')}</div>
+  <div class="eyebrow">Меню</div><div class="keys">${[K(['Q'],'квесты'),K(['R'],'рейтинг'),K(['T'],'навигация и телепорт'),K(['B'],'бонусы'),K(['F'],'моя ферма'),K(['G'],'дашборд'),K(['Z'],'реакции: эмодзи над головой'),K(['N'],'звук вкл/выкл'),K(['1','…','9'],'кнопки в открытой панели'),K(['Esc'],'закрыть')].join('')}</div>
   <div class="eyebrow">В поле</div><div class="keys">${[K(['W','S'],'газ, тормоз'),K(['A','D'],'руль'),K(['Space'],'опустить или поднять плуг'),K(['V'],'вид камеры'),K(['Enter'],'завершить вспашку')].join('')}</div>`);
 }
-const NAV={quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
+const NAV={react:()=>toggleSheet('react',sheetReact),quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
 document.querySelectorAll('#nav [data-open]').forEach(b=>b.onclick=()=>NAV[b.dataset.open]());
 
 /* ================= РЕГИСТРАЦИЯ ================= */
@@ -629,6 +629,7 @@ function netInit(){if(!TRK.on||!window.supabase)return;
   const ch=sb.channel('expo',{config:{broadcast:{self:false},presence:{key:S.vid}}});NET.ch=ch;
   ch.on('presence',{event:'sync'},netSync)
     .on('presence',{event:'join'},({key,newPresences})=>{const m=newPresences[0];if(NET.synced&&key!==S.vid&&!NET.peers.has(key)&&m)toast('<b>'+esc(m.n)+'</b> зашёл на выставку');})
+    .on('broadcast',{event:'r'},({payload:m})=>{const p=NET.peers.get(m.i);if(p&&REACT[m.e])say(p,m.e);})
     .on('broadcast',{event:'p'},({payload:m})=>{const p=NET.peers.get(m.i);if(!p)return;p.tgt.set(m.x,m.y||0,m.z);p.trot=m.r;p.w=m.w;
       if(!p.seen||p.cur.distanceTo(p.tgt)>6){p.cur.copy(p.tgt);p.rot=m.r;}p.seen=true;})
     .subscribe(st=>{NET.on=st==='SUBSCRIBED';if(NET.on){NET.sent.t=0;netTrack(true);}});
@@ -641,7 +642,7 @@ function netSync(){const st=NET.ch.presenceState(),seen=new Set();
     const look=m.c+'|'+m.h;
     if(p.look!==look){if(p.a)scene.remove(p.a);p.a=AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
     p.l.userData.draw(m.n,'Ур. '+m.lv);p.c=m.c;}
-  NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);NET.peers.delete(k);}});
+  NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);if(p.bub)scene.remove(p.bub);NET.peers.delete(k);}});
   NET.synced=true;$('#pOnline').hidden=false;$('#pOnline').textContent='Сейчас на выставке: '+(NET.peers.size+1);}
 function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),w=$('#drive').hidden?'hall':'field',s=NET.sent;
   const moved=Math.hypot(player.pos.x-s.x,player.pos.z-s.z)>.05||Math.abs(player.rot-s.r)>.05||player.y>0||w!==s.w;
@@ -650,7 +651,7 @@ function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),
 function netUpdate(dt){NET.peers.forEach(p=>{if(!p.a)return;const vis=p.seen&&p.w!=='field';p.a.visible=p.l.visible=vis;if(!vis)return;
   const px=p.cur.x,pz=p.cur.z;p.cur.lerp(p.tgt,1-Math.pow(.0005,dt));const spd=Math.hypot(p.cur.x-px,p.cur.z-pz)/Math.max(dt,1e-3);
   p.rot=lerpA(p.rot,p.trot,Math.min(1,dt*10));p.a.position.copy(p.cur);p.a.rotation.y=p.rot;AX.walk(p.a,p.cur.y>.01||spd<.3?0:spd,dt);
-  p.l.position.set(p.cur.x,2.45+p.cur.y,p.cur.z);});}
+  p.l.position.set(p.cur.x,2.45+p.cur.y,p.cur.z);bubTick(p,p.cur.x,3.2+p.cur.y,p.cur.z,true,dt);});}
 
 const BOTN=[['Иван','3'],['Марина','2'],['Алексей','5'],['Светлана','1'],['Пётр','4'],['Дарья','2'],['Николай','3'],['Руслан','1']];
 const bots=BOTN.map((b,i)=>{const cols=['#7b5aa6','#3d6db0','#e07b22','#2f3442','#c4445a','#3f8a4f','#d8b13a','#5d7a8c'];
@@ -687,8 +688,27 @@ function botTick(b,dt){const s=b.q[0],P=b.a.position;
   if(s.to){const dx=s.to[0]-P.x,dz=s.to[1]-P.z,l=Math.hypot(dx,dz);
     if(l<.25){b.q.shift();return;}const st=Math.min(l,b.spd*dt);P.x+=dx/l*st;P.z+=dz/l*st;b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(dx,dz),Math.min(1,dt*8));AX.walk(b.a,b.spd,dt);}
   else if(s.away!==undefined){b.away=true;s.away-=dt;if(s.away<=0){b.away=false;b.q.shift();}}
-  else{if(s.face)b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(s.face[0]-P.x,s.face[1]-P.z),Math.min(1,dt*5));AX.walk(b.a,0,dt);s.wait-=dt;if(s.wait<=0)b.q.shift();}}
+  else{if(!s.said){s.said=true;const ch=b.act==='chat'?.85:b.act==='stand'?.3:0;if(Math.random()<ch)setTimeout(()=>say(b,pick(b.act==='chat'?[0,5,1,4]:[1,3,2])),rn(300,2500));}
+    if(s.face)b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(s.face[0]-P.x,s.face[1]-P.z),Math.min(1,dt*5));AX.walk(b.a,0,dt);s.wait-=dt;if(s.wait<=0)b.q.shift();}}
 
+
+/* ================= РЕАКЦИИ ================= */
+// Пузырь с эмодзи над головой на 4 секунды. Свои реакции уходят другим игрокам, боты реагируют сами в разговоре и у стендов.
+const REACT=[['👋','Привет!'],['👍','Класс'],['🔥','Огонь'],['🚜','Хочу такой'],['❓','Есть вопрос'],['😂','Ха-ха']];
+function makeBubble(){const c=document.createElement('canvas');c.width=384;c.height=128;const x=c.getContext('2d'),tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;
+  const spr=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false,toneMapped:false}));spr.scale.set(2.1,.7,1);spr.visible=false;scene.add(spr);
+  spr.userData.draw=r=>{x.clearRect(0,0,384,128);x.font='700 40px "Golos Text",sans-serif';const tw=Math.min(372,x.measureText(r[1]).width+110),X=(384-tw)/2;
+    x.fillStyle='#fff';x.beginPath();x.roundRect(X,8,tw,88,26);x.moveTo(184,96);x.lineTo(192,118);x.lineTo(204,96);x.fill();
+    x.textBaseline='middle';x.font='48px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';x.fillText(r[0],X+18,54);
+    x.font='700 40px "Golos Text",sans-serif';x.fillStyle='#16231b';x.fillText(r[1],X+84,56,tw-100);tex.needsUpdate=true;};
+  return spr;}
+function say(h,i){if(!h.bub)h.bub=makeBubble();h.bub.userData.draw(REACT[i]);h.bubT=4;}
+function bubTick(h,x,y,z,vis,dt){if(!h.bub||!(h.bubT>0))return;h.bubT-=dt;h.bub.visible=vis&&h.bubT>0;h.bub.position.set(x,y,z);h.bub.material.opacity=Math.min(1,h.bubT/.5);}
+let reactT=0;
+function react(i){const now=performance.now();if(now-reactT<1500)return;reactT=now;say(player,i);sfx.click();
+  if(NET.on&&S.registered)NET.ch.send({type:'broadcast',event:'r',payload:{i:S.vid,e:i}});track('Реакция '+REACT[i][0]+' '+REACT[i][1]);}
+function sheetReact(){openSheet('react','Реакции',`<p class="muted" style="margin:0">Появится над вашей головой, её увидят все в павильоне.</p><div class="list">${REACT.map((r,i)=>`<button class="qbtn" data-i="${i}" data-key="${i+1}">${r[0]} ${esc(r[1])}</button>`).join('')}</div>`,
+  b=>b.querySelectorAll('[data-i]').forEach(x=>x.onclick=()=>{closeSheet();react(+x.dataset.i);}));}
 const burstSys=new Smoke(scene,'#e8a01a');
 function burst(){if(!player.obj)return;const p=player.pos.clone();p.y=1.8;for(let i=0;i<8;i++)burstSys.emit(p,400,.003);}
 const showSmoke=new Smoke(scene);
@@ -1009,7 +1029,7 @@ addEventListener('keydown',e=>{
   if(k==='E'||k==='Enter'){if(curInter){doInter(curInter);}return;}
   if(k==='I'){const t=nearestTractor();if(t)startInspect(t);else toast('Подойдите к трактору на стенде');return;}
   if(k==='Space'){if(player.y<=0.001)player.vy=5.4;return;}
-  const map={Q:'quests',R:'leaders',T:'teleport',B:'bonuses',F:'farm',G:'dash',H:'help'};
+  const map={Q:'quests',R:'leaders',T:'teleport',B:'bonuses',F:'farm',G:'dash',H:'help',Z:'react'};
   if(map[k]){NAV[map[k]]();return;}
   if(k==='C'){camView=(camView+1)%CAMS.length;dist=CAMS[camView].d;pitch=CAMS[camView].p;toast('Камера: <b>'+CAMS[camView].n+'</b>');return;}
   if(k==='M'){mmOn=!mmOn;$('#minimap').hidden=!mmOn;return;}
@@ -1104,10 +1124,10 @@ function tick(now){
   player.pos.x=clamp(player.pos.x,-HX+.8,HX-1.2);player.pos.z=clamp(player.pos.z,-HZ+1,HZ-1);
   player.vy-=16*dt;player.y=Math.max(0,player.y+player.vy*dt);if(player.y<=0)player.vy=0;
   player.obj.position.set(player.pos.x,player.y,player.pos.z);player.obj.rotation.y=player.rot;AX.walk(player.obj,player.y>0?0:spd,dt);
-  player.label.position.set(player.pos.x,2.45+player.y,player.pos.z);
+  player.label.position.set(player.pos.x,2.45+player.y,player.pos.z);bubTick(player,player.pos.x,3.2+player.y,player.pos.z,true,dt);
   // живых игроков больше — ботов меньше (минимум трое, чтобы павильон не пустел)
   const nb=bots.length-Math.min(NET.peers.size,bots.length-3);
-  bots.forEach((b,i)=>{b.on=i<nb;b.a.visible=b.l.visible=b.on&&!b.away;if(!b.on)return;botTick(b,dt);b.l.position.set(b.a.position.x,2.35,b.a.position.z);});
+  bots.forEach((b,i)=>{b.on=i<nb;b.a.visible=b.l.visible=b.on&&!b.away;if(b.bub&&!b.a.visible)b.bub.visible=false;if(!b.on)return;botTick(b,dt);b.l.position.set(b.a.position.x,2.35,b.a.position.z);bubTick(b,b.a.position.x,3.05,b.a.position.z,!b.away,dt);});
   netUpdate(dt);
   spinners.forEach(s=>{if(s.on)s.turn.rotation.y+=dt*.22;});
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
