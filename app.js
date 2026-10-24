@@ -90,7 +90,25 @@ for(const k in DEF)if(S[k]===undefined)S[k]=JSON.parse(JSON.stringify(DEF[k]));
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 const level=()=>1+Math.floor(S.points/120);
 const title=()=>TITLES[Math.min(TITLES.length-1,level()-1)];
-function logEvent(x){S.events.push({t:Date.now(),x});if(S.events.length>60)S.events.shift();}
+function logEvent(x){S.events.push({t:Date.now(),x});if(S.events.length>60)S.events.shift();track(x);}
+
+/* ================= ЖУРНАЛ НА СЕРВЕРЕ ================= */
+// Если в config.js заданы адрес и ключ Supabase, действия посетителей пишутся в таблицу events (только вставка).
+const CFG=window.AGRO_CFG||{},TRK={on:!!(CFG.supabaseUrl&&CFG.supabaseKey),q:[],sid:uid(),busy:false,t0:Date.now()};
+function uid(){if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=b[6]&15|64;b[8]=b[8]&63|128;
+  const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);}
+if(!S.vid){S.vid=uid();save();}
+function track(action){if(!TRK.on)return;
+  TRK.q.push({visitor:S.vid,session:TRK.sid,nick:S.nick,role:(ROLES[S.role]||{}).n||null,region:S.farm.region,farm:S.farm.name,points:S.points,level:level(),action:String(action).slice(0,300)});
+  if(TRK.q.length>200)TRK.q.shift();}
+function trackFlush(leaving){if(!TRK.on||(TRK.busy&&!leaving)||!TRK.q.length)return;const rows=TRK.q.splice(0,50);TRK.busy=true;
+  const h={'Content-Type':'application/json',apikey:CFG.supabaseKey,Prefer:'return=minimal'};if(!CFG.supabaseKey.startsWith('sb_'))h.Authorization='Bearer '+CFG.supabaseKey;
+  fetch(CFG.supabaseUrl.replace(/\/+$/,'')+'/rest/v1/events',{method:'POST',headers:h,body:JSON.stringify(rows),keepalive:!!leaving})
+    .then(r=>{if(r.status>=500||r.status===429)throw 0;if(!r.ok)console.warn('Журнал: сервер ответил',r.status);})
+    .catch(()=>{if(!leaving)TRK.q.unshift(...rows);}).finally(()=>{TRK.busy=false;});}
+if(TRK.on){setInterval(trackFlush,4000);
+  addEventListener('pagehide',()=>{track('Ушёл · на выставке '+Math.max(1,Math.round((Date.now()-TRK.t0)/60000))+' мин');trackFlush(true);});
+  track(S.registered?'Вернулся на выставку':'Открыл страницу');}
 
 /* ================= ЗВУК ================= */
 let AC=null;
@@ -222,7 +240,7 @@ function quizAsk(i){
   openSheet('quiz','Агро-квиз',`<div class="eyebrow">Вопрос ${i+1} из ${QUIZ.length}</div><b style="font-size:16px;line-height:1.35">${esc(q[0])}</b><div class="list">${q[1].map((a,j)=>`<button class="opt" data-j="${j}" data-key="${j+1}">${esc(a)}</button>`).join('')}</div><div id="qzMsg" class="small"></div>`,
   b=>{let answered=false;b.querySelectorAll('[data-j]').forEach(x=>x.onclick=()=>{if(answered)return;answered=true;const j=+x.dataset.j,ok=j===q[2];
     x.classList.add(ok?'ok':'bad');b.querySelector(`[data-j="${q[2]}"]`).classList.add('ok');
-    if(!S.quizReplay&&S.quiz[i]===undefined){S.quiz[i]=ok?1:0;save();if(ok)award('quiz_'+i,10,'Верный ответ в квизе');else sfx.bad();}
+    if(!S.quizReplay&&S.quiz[i]===undefined){S.quiz[i]=ok?1:0;save();if(ok)award('quiz_'+i,10,'Верный ответ в квизе');else{sfx.bad();track('Квиз: вопрос '+(i+1)+' — неверно');}}
     const nx=QUIZ.findIndex((qq,k)=>k>i&&(S.quizReplay||S.quiz[k]===undefined));
     b.querySelector('#qzMsg').innerHTML=(ok?'<b style="color:var(--field)">Верно.</b>':'<b style="color:var(--danger)">Неверно.</b>')+` <span class="row" style="margin-top:10px">${nx>=0?'<button class="btn" id="qzN" data-key="Enter">Следующий вопрос</button>':'<button class="btn" id="qzN" data-key="Enter">Завершить</button>'}</span>`;
     b.querySelector('#qzN').onclick=()=>{if(nx>=0)quizAsk(nx);else{S.quizReplay=false;closeSheet();checkQuests();}};decorate(b);});});
@@ -265,7 +283,7 @@ function openReg(step){
     <label class="f">Основная культура<select id="rCrop">${Object.entries(CROPS).map(([k,c])=>`<option value="${k}" ${k===f.crop?'selected':''}>${c.n}</option>`).join('')}</select></label>
     <div class="grid2"><label class="f">Ваш трактор<select id="rTr">${Object.entries(OWN).map(([k,o])=>`<option value="${k}" ${k===f.tractor?'selected':''}>${o.n}</option>`).join('')}</select></label>
     <label class="f">Сколько единиц<input id="rCnt" type="number" min="1" max="60" value="${f.count}"></label></div>
-    <div class="note"><span>${f.sat?'Поле построено по снимку: <b>'+fmt1(f.area)+' га</b>':'Можно построить поле по спутниковому снимку участка'}</span><button class="btn ghost" id="rSat" data-key="P">Поле со спутника</button></div>
+    <div class="note"><span>${f.sat?'Поле построено по снимку: <b>'+fmt1(f.area)+' га</b>':'Можно построить поле по спутниковому снимку участка'}</span><button class="btn ghost" id="rSat" data-key="P">Поле со спутника</button></div>${TRK.on?'<p class="small muted" style="margin:0">Ник, хозяйство, регион, баллы и действия на выставке сохраняются для статистики демо. Телефон из заявок не отправляется.</p>':''}
     <span class="hint"><kbd>Tab</kbd> по полям, <kbd>Enter</kbd> войти</span>`;
     $('#regFoot').innerHTML=`<button class="btn ghost" id="rBack" data-key="Backspace">Назад</button><button class="btn signal" id="rGo" data-key="Enter">${S.registered?'Сохранить':'Войти на выставку'}</button>`;
     const read=()=>{f.name=$('#rFarm').value.trim()||'Моё хозяйство';f.region=$('#rReg').value;const a=+$('#rArea').value;if(a>0&&Math.abs(a-Math.round(f.area))>=1){f.area=a;f.sat=false;}f.crop=$('#rCrop').value;f.tractor=$('#rTr').value;f.count=clamp(Math.round(+$('#rCnt').value||1),1,60);};
@@ -791,7 +809,7 @@ function startManual(){F.phase='manual';fieldTractor('ex');F.trKey='';fieldTract
   const b=F.bb;F.pos.copy(toWorld(b.minX-12/F.k,(b.minY+b.maxY)/2));F.head=0;F.v=0;F.steer=0;F.plowDown=false;F.last=null;F.mt0=performance.now();F.covered=0;F.over=0;F.camMode='chase';
   F.tr.userData.engineOn=true;engineSound(true);drawDriveSide();}
 function finishManual(){const n=F.grid.cells.length;const cov=F.covered/n*100,ovl=F.covered?F.over/(F.covered+F.over)*100:0;
-  F.stats={cov,ovl,time:(performance.now()-F.mt0)/1000};S.plow={cov,ovl};F.phase='manualDone';engineSound(false);F.tr.userData.engineOn=false;
+  F.stats={cov,ovl,time:(performance.now()-F.mt0)/1000};S.plow={cov,ovl};track('Вспашка: покрыто '+fmt(cov)+'%, перекрытия '+fmt(ovl)+'%');F.phase='manualDone';engineSound(false);F.tr.userData.engineOn=false;
   award('manual',30,'Сам за рулём');if(cov>=90)award('plow90',40,'Вспашка 90%+');save();checkQuests();drawDriveSide();}
 const fkeys={};
 function fieldTick(now,dt){
