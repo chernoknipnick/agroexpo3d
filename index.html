@@ -94,6 +94,11 @@ kbd,.kb{font-family:var(--f-mono);font-size:11px;font-weight:700;line-height:1;b
 #inspect h3{margin:0;font-family:var(--f-display);font-size:16px}
 #inspect .row .btn{background:var(--night-2);color:#fff;border:1px solid #ffffff22}
 #inspect .row .btn.on{background:var(--signal);color:var(--signal-ink)}
+#inspect .row .break{flex-basis:100%;height:0}
+#inspect .row .btn.go{background:var(--field);border-color:#0000}
+#inspect .row .btn.out{background:#0000;border-color:#ffffff44;color:#cfd8d2}
+#fade{position:fixed;inset:0;background:#0d1410;opacity:0;pointer-events:none;transition:opacity .28s ease;z-index:90}
+#fade.on{opacity:1}
 
 /* Side sheet */
 #sheet{position:fixed;z-index:20;top:calc(12px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(430px,calc(100% - 24px));
@@ -306,6 +311,7 @@ label.f input,label.f select{border:1px solid var(--line);border-radius:10px;pad
   <div class="row" id="insBtns"></div>
 </div></div>
 <div class="hud" id="toasts"></div>
+<div id="fade"></div>
 
 <aside id="sheet" hidden aria-live="polite"><header><h2 id="sheetTitle"></h2><button class="x" id="sheetX" aria-label="Закрыть">Закрыть <kbd>Esc</kbd></button></header><div id="sheetBody"></div></aside>
 

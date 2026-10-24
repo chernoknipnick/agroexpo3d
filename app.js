@@ -119,7 +119,7 @@ const QUESTS=[
   {id:'q_stands',n:'Посети 3 стенда',d:'Зайдите на каждый стенд павильона',p:25,done:()=>Object.keys(S.visited).length>=3,prog:()=>Math.min(3,Object.keys(S.visited).length)+'/3'},
   {id:'q_eco',n:'Найди самый экономичный трактор',d:'Сравните л/га в карточках и отметьте лучший',p:30,done:()=>!!S.awards.q_eco_found},
   {id:'q_drive',n:'Тест-драйв на своём поле',d:'Пройдите сезон своей техникой и новой',p:25,done:()=>S.drives>0},
-  {id:'q_quiz',n:'Агро-квиз',d:'Ответьте на вопросы у стойки квиза',p:20,done:()=>Object.keys(S.quiz).length>=3,prog:()=>Math.min(3,Object.keys(S.quiz).length)+'/3'}
+  {id:'q_quiz',n:'Агро-квиз',d:'Ответьте на все вопросы у стойки квиза',p:20,done:()=>Object.keys(S.quiz).length>=QUIZ.length,prog:()=>Object.keys(S.quiz).length+'/'+QUIZ.length}
 ];
 const ACH=[
   {id:'a_harvest',n:'Первый урожай',m:'1',done:()=>S.drives>0},
@@ -176,7 +176,10 @@ function sheetLeaders(tab){
 }
 function sheetTeleport(){
   openSheet('teleport','Навигация по павильону',`<p class="muted" style="margin:0">Мгновенный переход к точке павильона.</p><div class="list">${PLACES.map((p,i)=>`<button class="qbtn" data-i="${i}" data-key="${i+1}">${esc(p.n)}</button>`).join('')}</div>`,
-    b=>b.querySelectorAll('[data-i]').forEach(x=>x.onclick=()=>{const p=PLACES[+x.dataset.i];player.pos.set(p.x,0,p.z);closeSheet();toast('Вы у точки «'+esc(p.n)+'»');}));
+    b=>b.querySelectorAll('[data-i]').forEach(x=>x.onclick=()=>{const p=PLACES[+x.dataset.i];closeSheet();fadeJump(()=>{player.pos.set(p.x,0,p.z);toast('Вы у точки «'+esc(p.n)+'»');});}));
+}
+function fadeJump(fn){const f=$('#fade');if(f.classList.contains('on'))return;f.classList.add('on');
+  setTimeout(()=>{fn();setTimeout(()=>f.classList.remove('on'),120);},280);
 }
 function sheetBonuses(){
   const ps=PRIZES.map(p=>`<div class="prize"><b>${esc(p.n)}</b><span class="c">${p.c}</span><div class="bar"><i style="width:${Math.min(100,S.points/p.c*100)}%"></i></div><span class="small muted">${S.points>=p.c?'Баллов хватает':'Ещё '+(p.c-S.points)+' баллов'}</span></div>`).join('');
@@ -217,12 +220,12 @@ function sheetQuiz(){
 function quizAsk(i){
   const q=QUIZ[i],done=Object.keys(S.quiz).length;
   openSheet('quiz','Агро-квиз',`<div class="eyebrow">Вопрос ${i+1} из ${QUIZ.length}</div><b style="font-size:16px;line-height:1.35">${esc(q[0])}</b><div class="list">${q[1].map((a,j)=>`<button class="opt" data-j="${j}" data-key="${j+1}">${esc(a)}</button>`).join('')}</div><div id="qzMsg" class="small"></div>`,
-  b=>b.querySelectorAll('[data-j]').forEach(x=>x.onclick=()=>{if(b.dataset.ans)return;b.dataset.ans=1;const j=+x.dataset.j,ok=j===q[2];
+  b=>{let answered=false;b.querySelectorAll('[data-j]').forEach(x=>x.onclick=()=>{if(answered)return;answered=true;const j=+x.dataset.j,ok=j===q[2];
     x.classList.add(ok?'ok':'bad');b.querySelector(`[data-j="${q[2]}"]`).classList.add('ok');
     if(!S.quizReplay&&S.quiz[i]===undefined){S.quiz[i]=ok?1:0;save();if(ok)award('quiz_'+i,10,'Верный ответ в квизе');else sfx.bad();}
     const nx=QUIZ.findIndex((qq,k)=>k>i&&(S.quizReplay||S.quiz[k]===undefined));
     b.querySelector('#qzMsg').innerHTML=(ok?'<b style="color:var(--field)">Верно.</b>':'<b style="color:var(--danger)">Неверно.</b>')+` <span class="row" style="margin-top:10px">${nx>=0?'<button class="btn" id="qzN" data-key="Enter">Следующий вопрос</button>':'<button class="btn" id="qzN" data-key="Enter">Завершить</button>'}</span>`;
-    b.querySelector('#qzN').onclick=()=>{if(nx>=0)quizAsk(nx);else{S.quizReplay=false;closeSheet();checkQuests();}};decorate(b);}));
+    b.querySelector('#qzN').onclick=()=>{if(nx>=0)quizAsk(nx);else{S.quizReplay=false;closeSheet();checkQuests();}};decorate(b);});});
 }
 function sheetHelp(){
   const K=(ks,t)=>`<span>${ks.map(k=>`<kbd>${k}</kbd>`).join('')}</span><span>${t}</span>`;
@@ -637,7 +640,7 @@ function startInspect(id){const s=stands[id];if(!s)return;INS.id=id;INS.a=Math.a
   renderInspect();award('inspect_'+id,10,'Осмотр '+EXPO[id].n);
   $('#hotspots').innerHTML=HOTS.map(h=>`<div class="hs" data-h="${h.k}"><b>${h.n}</b><span>${esc(h.v(EXPO[id]))}</span></div>`).join('');}
 function renderInspect(){const s=INS.state,B=[['hood','1','Капот'],['door','2','Дверь'],['lights','3','Фары'],['engine','4','Двигатель'],['beacon','5','Маячок']];
-  $('#insBtns').innerHTML=B.map(b=>`<button class="btn ${s[b[0]]?'on':''}" data-a="${b[0]}" data-key="${b[1]}">${b[2]}</button>`).join('')+`<button class="btn signal" data-a="drive" data-key="6">Тест-драйв</button><button class="btn" data-a="exit" data-key="Escape">Выйти</button>`;
+  $('#insBtns').innerHTML=B.map(b=>`<button class="btn ${s[b[0]]?'on':''}" data-a="${b[0]}" data-key="${b[1]}">${b[2]}</button>`).join('')+`<span class="break"></span><button class="btn go" data-a="drive" data-key="E">Тест-драйв</button><button class="btn out" data-a="exit" data-key="Escape">Выйти</button>`;
   $('#insBtns').querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>inspectAct(b.dataset.a));decorate($('#insBtns'));}
 function inspectAct(a){const tr=stands[INS.id].tr,U=tr.userData,s=INS.state;
   if(a==='exit')return stopInspect();if(a==='drive'){const id=INS.id;stopInspect();return openDrive(id);}
@@ -663,7 +666,7 @@ function fieldInit(){
   F.scene.add(new T.HemisphereLight('#ffffff','#7d8a5a',.45));
   F.sun=new T.DirectionalLight('#fff1d8',2.2);F.sun.castShadow=true;Object.assign(F.sun.shadow.camera,{left:-22,right:22,top:22,bottom:-22,near:1,far:120});F.sun.shadow.camera.updateProjectionMatrix();F.sun.shadow.mapSize.set(2048,2048);F.sun.shadow.bias=-.0004;F.scene.add(F.sun,F.sun.target);
   const gt=rowsTexture();gt.repeat.set(80,80);const g=M(new T.PlaneGeometry(1600,1600),new T.MeshStandardMaterial({map:gt,roughness:1}),F.scene,0,-.05,0,false);g.rotation.x=-Math.PI/2;
-  addTrees(F.scene,220,70,320);
+  addTrees(F.scene,220,70,320,(x,z)=>Math.abs(x)<64&&Math.abs(z)<64);
   F.smoke=new Smoke(F.scene);F.dust=new Smoke(F.scene,'#9b8458');
 }
 function fieldBuild(){
@@ -971,7 +974,7 @@ function objective(){
   if(un.length){let b=null,bd=1e9;un.forEach(s=>{const c=stands[s.tractor].front;const d=c.distanceTo(player.pos);if(d<bd){bd=d;b=s;}});return {t:`Посетите стенд «${b.brand}»`,p:stands[b.tractor].center};}
   if(!S.awards.q_eco_found){const nv=Object.keys(EXPO).find(k=>!S.viewed[k]);const id=nv||'sm2400';return {t:nv?`Сравните расход: карточка ${EXPO[id].n}`:'Отметьте самый экономичный трактор в его карточке',p:stands[id].center};}
   if(S.drives<1)return {t:'Пройдите тест-драйв на своём поле',p:inter.find(i=>i.kind==='kiosk').pos};
-  if(Object.keys(S.quiz).length<3)return {t:'Ответьте на вопросы агро-квиза',p:inter.find(i=>i.kind==='quiz').pos};
+  if(Object.keys(S.quiz).length<QUIZ.length)return {t:'Ответьте на все вопросы агро-квиза',p:inter.find(i=>i.kind==='quiz').pos};
   if(!S.plow)return {t:'Сядьте за руль: вспашка у ворот в поле',p:inter.find(i=>i.kind==='gate').pos};
   return null;
 }

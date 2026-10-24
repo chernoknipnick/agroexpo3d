@@ -308,7 +308,7 @@ AX.makeTractor=function(o){
   g.userData.update=(dt,t)=>{
     if(ud.beacon.on){ud.beacon.mesh.rotation.y+=dt*8;bm.emissiveIntensity=1.2+Math.max(0,Math.sin(t*12))*2.5;}
     const U=g.userData;U.hood.rotation.z+=((U.hoodOpen?.85:0)-U.hood.rotation.z)*Math.min(1,dt*4);
-    U.door.rotation.y+=((U.doorOpen?1.2:0)-U.door.rotation.y)*Math.min(1,dt*4);
+    U.door.rotation.y+=((U.doorOpen?-1.2:0)-U.door.rotation.y)*Math.min(1,dt*4);
     if(U.engineOn){ud.cabShake=(Math.sin(t*90)*.004);cab.position.y=ud.cabShake;hinge.position.y=2.02+ud.cabShake*.6;eng.position.y=1.08+ud.cabShake;}
     else{cab.position.y=0;hinge.position.y=2.02;eng.position.y=1.08;}
   };
