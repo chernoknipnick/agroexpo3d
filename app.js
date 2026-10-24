@@ -130,7 +130,7 @@ function award(key,pts,text){
   if(key){if(S.awards[key])return false;S.awards[key]=1;}
   const lv=level();S.points+=pts;logEvent(text+' (+'+pts+')');
   toast('<b>+'+pts+'</b> · '+esc(text));sfx.pts();burst();
-  if(level()>lv)setTimeout(()=>{toast('Новый уровень: <b>'+level()+'</b> · '+esc(title()));sfx.lvl();},600);
+  if(level()>lv){setTimeout(()=>{toast('Новый уровень: <b>'+level()+'</b> · '+esc(title()));sfx.lvl();},600);netTrack();}
   save();updateHUD();checkQuests();return true;
 }
 const QUESTS=[
@@ -289,7 +289,7 @@ function openReg(step){
     const read=()=>{f.name=$('#rFarm').value.trim()||'Моё хозяйство';f.region=$('#rReg').value;const a=+$('#rArea').value;if(a>0&&Math.abs(a-Math.round(f.area))>=1){f.area=a;f.sat=false;}f.crop=$('#rCrop').value;f.tractor=$('#rTr').value;f.count=clamp(Math.round(+$('#rCnt').value||1),1,60);};
     $('#rSat').onclick=()=>{read();openFieldTool(()=>openReg(2))};
     $('#rBack').onclick=()=>{read();openReg(1)};
-    $('#rGo').onclick=()=>{read();const first=!S.registered;S.registered=true;save();closeReg();if(first){logEvent('Регистрация: '+f.name);setTimeout(()=>toast('Добро пожаловать, <b>'+esc(S.nick)+'</b>! Цель дня — вверху экрана'),300);}updateHUD();};
+    $('#rGo').onclick=()=>{read();const first=!S.registered;S.registered=true;save();closeReg();netTrack(true);if(first){logEvent('Регистрация: '+f.name);setTimeout(()=>toast('Добро пожаловать, <b>'+esc(S.nick)+'</b>! Цель дня — вверху экрана'),300);}updateHUD();};
   }
   decorate($('#reg'));
 }
@@ -613,7 +613,38 @@ const beacon=new T.Group();scene.add(beacon);
 const player={obj:null,label:null,pos:new V3(-24,0,0),rot:Math.PI/2,vy:0,y:0};
 function rebuildPlayer(){if(player.obj)scene.remove(player.obj);
   player.obj=AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
-  if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,'Ур. '+level());$('#pDot').style.background=S.color;}
+  if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,'Ур. '+level());$('#pDot').style.background=S.color;netTrack();}
+/* ================= ОДНОВРЕМЕННАЯ ИГРА ================= */
+// Supabase Realtime: присутствие (кто сейчас на выставке) и трансляция координат. Работает, если в config.js задан проект.
+const NET={ch:null,on:false,peers:new Map(),synced:false,sent:{x:0,z:0,r:0,w:'',t:0},trT:0};
+function netInit(){if(!TRK.on||!window.supabase)return;
+  let sb;try{sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:false,autoRefreshToken:false}});}catch(e){return;}
+  const ch=sb.channel('expo',{config:{broadcast:{self:false},presence:{key:S.vid}}});NET.ch=ch;
+  ch.on('presence',{event:'sync'},netSync)
+    .on('presence',{event:'join'},({key,newPresences})=>{const m=newPresences[0];if(NET.synced&&key!==S.vid&&!NET.peers.has(key)&&m)toast('<b>'+esc(m.n)+'</b> зашёл на выставку');})
+    .on('broadcast',{event:'p'},({payload:m})=>{const p=NET.peers.get(m.i);if(!p)return;p.tgt.set(m.x,m.y||0,m.z);p.trot=m.r;p.w=m.w;
+      if(!p.seen||p.cur.distanceTo(p.tgt)>6){p.cur.copy(p.tgt);p.rot=m.r;}p.seen=true;})
+    .subscribe(st=>{NET.on=st==='SUBSCRIBED';if(NET.on){NET.sent.t=0;netTrack(true);}});
+  setInterval(netSend,160);}
+function netTrack(now){if(!NET.on||!S.registered)return;clearTimeout(NET.trT);
+  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level()}),now?0:600);}
+function netSync(){const st=NET.ch.presenceState(),seen=new Set();
+  for(const k in st){const m=st[k][0];if(k===S.vid||!m)continue;seen.add(k);let p=NET.peers.get(k);
+    if(!p){p={cur:new V3(),tgt:new V3(),rot:0,trot:0,w:'hall',seen:false,look:'',a:null,l:makeLabel(2.4)};scene.add(p.l);NET.peers.set(k,p);}
+    const look=m.c+'|'+m.h;
+    if(p.look!==look){if(p.a)scene.remove(p.a);p.a=AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
+    p.l.userData.draw(m.n,'Ур. '+m.lv);p.c=m.c;}
+  NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);NET.peers.delete(k);}});
+  NET.synced=true;$('#pOnline').hidden=false;$('#pOnline').textContent='Сейчас на выставке: '+(NET.peers.size+1);}
+function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),w=$('#drive').hidden?'hall':'field',s=NET.sent;
+  const moved=Math.hypot(player.pos.x-s.x,player.pos.z-s.z)>.05||Math.abs(player.rot-s.r)>.05||player.y>0||w!==s.w;
+  if(!moved&&now-s.t<3000)return;s.x=player.pos.x;s.z=player.pos.z;s.r=player.rot;s.w=w;s.t=now;
+  NET.ch.send({type:'broadcast',event:'p',payload:{i:S.vid,x:+player.pos.x.toFixed(2),z:+player.pos.z.toFixed(2),y:+player.y.toFixed(2),r:+player.rot.toFixed(2),w}});}
+function netUpdate(dt){NET.peers.forEach(p=>{if(!p.a)return;const vis=p.seen&&p.w!=='field';p.a.visible=p.l.visible=vis;if(!vis)return;
+  const px=p.cur.x,pz=p.cur.z;p.cur.lerp(p.tgt,1-Math.pow(.0005,dt));const spd=Math.hypot(p.cur.x-px,p.cur.z-pz)/Math.max(dt,1e-3);
+  p.rot=lerpA(p.rot,p.trot,Math.min(1,dt*10));p.a.position.copy(p.cur);p.a.rotation.y=p.rot;AX.walk(p.a,p.cur.y>.01||spd<.3?0:spd,dt);
+  p.l.position.set(p.cur.x,2.45+p.cur.y,p.cur.z);});}
+
 const BOTN=[['Иван','3'],['Марина','2'],['Алексей','5'],['Светлана','1'],['Пётр','4'],['Дарья','2'],['Николай','3'],['Руслан','1']];
 const WAY=[[-24,1.5],[-18,-1.5],[-12,1.5],[-2,-1.5],[4,1.5],[12,-1.5],[20,1.2],[26,-1],[6,-7.5],[9.5,-8],[2.5,-8.5],[6,7.5],[3,8.5],[-16,7.5],[-13,8.5],[-18,-7],[-14,-9],[-22,-13]];
 const bots=BOTN.map((b,i)=>{const cols=['#7b5aa6','#3d6db0','#e07b22','#2f3442','#c4445a','#3f8a4f','#d8b13a','#5d7a8c'];
@@ -1008,6 +1039,7 @@ function drawMinimap(){const w=mm.width,h=mm.height,X=x=>8+(x+HX)/(HX*2)*(w-16),
   [['#2e6a3e',-27.4,4.2,'Р'],['#6d4b2f',-24,-16.5,'К'],['#e8a01a',-6,-5.2,'?'],['#2e6a3e',31,0,'→']].forEach(p=>{mx.fillStyle=p[0];mx.beginPath();mx.arc(X(p[1]),Z(p[2]),11,0,7);mx.fill();mx.fillStyle='#fff';mx.font='800 13px "Golos Text",sans-serif';mx.fillText(p[3],X(p[1]),Z(p[2])+5);});
   mx.fillStyle='#14181b';mx.fillRect(X(-9.3),Z(-3.8),.6*s,7.6*s);
   bots.forEach(b=>{mx.fillStyle='#7d8b81';mx.beginPath();mx.arc(X(b.a.position.x),Z(b.a.position.z),4,0,7);mx.fill();});
+  NET.peers.forEach(p=>{if(!p.seen||p.w==='field')return;mx.fillStyle=p.c;mx.beginPath();mx.arc(X(p.cur.x),Z(p.cur.z),7,0,7);mx.fill();mx.strokeStyle='#fff';mx.lineWidth=2.5;mx.stroke();});
   if(objCache){const t=performance.now()/300;mx.strokeStyle='#e8a01a';mx.lineWidth=3;mx.beginPath();mx.arc(X(objCache.p.x),Z(objCache.p.z),10+Math.sin(t)*3,0,7);mx.stroke();}
   mx.save();mx.translate(X(player.pos.x),Z(player.pos.z));mx.rotate(-player.rot+Math.PI);mx.fillStyle='#16231b';mx.beginPath();mx.moveTo(0,-12);mx.lineTo(8,9);mx.lineTo(0,4);mx.lineTo(-8,9);mx.closePath();mx.fill();mx.strokeStyle='#fff';mx.lineWidth=2;mx.stroke();mx.restore();
   // направление камеры
@@ -1040,6 +1072,7 @@ function tick(now){
   bots.forEach(b=>{if(b.wait>0){b.wait-=dt;AX.walk(b.a,0,dt);}else{const dx=b.tgt[0]-b.a.position.x,dz=b.tgt[1]-b.a.position.z,l=Math.hypot(dx,dz);
       if(l<.3){b.wait=1+Math.random()*4;b.tgt=WAY[Math.floor(Math.random()*WAY.length)];}else{b.a.position.x+=dx/l*b.spd*dt;b.a.position.z+=dz/l*b.spd*dt;b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(dx,dz),Math.min(1,dt*8));AX.walk(b.a,b.spd,dt);}}
     b.l.position.set(b.a.position.x,2.35,b.a.position.z);});
+  netUpdate(dt);
   spinners.forEach(s=>{if(s.on)s.turn.rotation.y+=dt*.22;});
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
   showSmoke.update(dt);burstSys.update(dt);
@@ -1073,7 +1106,7 @@ function tick(now){
 }
 
 function start(){
-  W.ready=true;rebuildPlayer();drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
+  W.ready=true;rebuildPlayer();netInit();drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
   $('#loading').remove();
   if(S.registered){closeReg();updateHUD();}else{openReg(1);updateHUD();}
   if(location.hash==='#dashboard')openDash();
