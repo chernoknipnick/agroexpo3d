@@ -646,12 +646,41 @@ function netUpdate(dt){NET.peers.forEach(p=>{if(!p.a)return;const vis=p.seen&&p.
   p.l.position.set(p.cur.x,2.45+p.cur.y,p.cur.z);});}
 
 const BOTN=[['Иван','3'],['Марина','2'],['Алексей','5'],['Светлана','1'],['Пётр','4'],['Дарья','2'],['Николай','3'],['Руслан','1']];
-const WAY=[[-24,1.5],[-18,-1.5],[-12,1.5],[-2,-1.5],[4,1.5],[12,-1.5],[20,1.2],[26,-1],[6,-7.5],[9.5,-8],[2.5,-8.5],[6,7.5],[3,8.5],[-16,7.5],[-13,8.5],[-18,-7],[-14,-9],[-22,-13]];
 const bots=BOTN.map((b,i)=>{const cols=['#7b5aa6','#3d6db0','#e07b22','#2f3442','#c4445a','#3f8a4f','#d8b13a','#5d7a8c'];
   const a=AX.makeHuman({shirt:cols[i],hat:['cap','helmet','none'][i%3],skin:['#e3b48f','#c99572','#f0c9a8'][i%3],hair:['#3a2a1e','#6b4a2a','#1e1a18'][i%3],pants:['#2d3a4a','#3d3a34','#26303a'][i%3]});
-  const w=WAY[(i*3)%WAY.length];a.position.set(w[0],0,w[1]);scene.add(a);
+  a.position.set(-22+i*6.5,0,(Math.random()-.5)*2.4);scene.add(a);
   const l=makeLabel(1.9,{bg:'rgba(255,255,255,.88)',fg:'#16231b',sub:'#2e6a3e'});l.userData.draw(b[0],'ур.'+b[1]);scene.add(l);
-  return {a,l,tgt:WAY[Math.floor(Math.random()*WAY.length)],wait:Math.random()*3,spd:1.1+Math.random()*.7};});
+  return {a,l,n:b[0],lv:+b[1],xp:0,q:[{wait:Math.random()*4}],act:'walk',away:false,spd:1.1+Math.random()*.7};});
+
+/* поведение ботов */
+// Каждый бот выбирает занятие (стенд, квиз, табло, кофе, скамейка, поле, разговор, прогулка) и идёт к нему через центральный проход.
+// Любое занятие начинается и заканчивается в проходе, поэтому боты не ходят сквозь стенды.
+const SW=(c,l)=>{const s=Math.sin(c.rot),k=Math.cos(c.rot);return [c.x+l[0]*k+l[1]*s,c.z-l[0]*s+l[1]*k];};
+const RING=[[-4.3,-.6],[-2.2,3.3],[2.2,3.4],[4.4,-1]],RNB=[[1],[0,2],[1,3],[2]]; // точки вокруг трактора по кругу и их соседи
+const rn=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.floor(Math.random()*a.length)];
+function botPlan(b){const q=[],go=p=>q.push({to:p}),wait=(s,f)=>q.push({wait:s,face:f}),aisle=x=>go([x,rn(-1.3,1.3)]),k=Math.random();
+  if(k<.42){b.act='stand';const c=pick(STANDS),E=SW(c,[0,5.8]),C=SW(c,[0,-.4]);aisle(E[0]);go(E);
+    let i=pick([1,2]);const path=[i];go(SW(c,RING[i]));wait(rn(5,10),c.full&&i===1&&Math.random()<.5?SW(c,[-3.4,2.6]):C);
+    if(Math.random()<.65){i=pick(RNB[i]);path.push(i);go(SW(c,RING[i]));wait(rn(4,8),C);}
+    if(i===3&&Math.random()<.7){go(SW(c,[3,-2.2]));wait(rn(2,4),SW(c,[3.8,-3.4]));go(SW(c,RING[3]));}
+    for(let j=path.length-2;j>=0;j--)go(SW(c,RING[path[j]]));go(E);aisle(E[0]);}
+  else if(k<.54){b.act='quiz';aisle(-6);go([rn(-6.6,-5.4),-3.7]);wait(rn(6,12),[-6,-5.2]);aisle(-6);}
+  else if(k<.61){b.act='board';const p=[rn(-12.5,-10.5),rn(-1.4,1.4)];go(p);wait(rn(4,8),[-9.3,p[1]]);}
+  else if(k<.70){b.act='coffee';aisle(-22);go([-22,-6]);go([rn(-25,-23),-14.3]);wait(rn(10,20),[-24,-16.5]);go([-22,-6]);aisle(-22);}
+  else if(k<.76){b.act='bench';const x=pick([-10,18]),s=pick([-1,1]);aisle(x);go([x+rn(-.8,.8),s*6.7]);wait(rn(8,16),[x,s*2]);aisle(x);}
+  else if(k<.83){b.act='field';aisle(26);go([29.4,0]);go([34,0]);q.push({away:rn(20,45)});go([29.4,0]);aisle(26);}
+  else if(k<.93&&botChat(b))return;
+  else{b.act='walk';aisle(rn(-24,26));wait(rn(2,6));}
+  b.q=q;}
+function botChat(b){const o=bots.find(x=>x!==b&&x.act==='walk'&&!x.away&&Math.abs(x.a.position.z)<2);if(!o)return false;
+  const m=[(b.a.position.x+o.a.position.x)/2,rn(-1,1)],t=rn(8,14);b.act=o.act='chat';
+  b.q=[{to:[m[0]-.65,m[1]]},{wait:t,face:[m[0]+.65,m[1]]}];o.q=[{to:[m[0]+.65,m[1]]},{wait:t+rn(0,2),face:[m[0]-.65,m[1]]}];return true;}
+function botTick(b,dt){const s=b.q[0],P=b.a.position;
+  if(!s){if(b.act==='stand'||b.act==='quiz'){b.xp++;if(b.xp%3===0)b.l.userData.draw(b.n,'ур.'+(++b.lv));}botPlan(b);return;}
+  if(s.to){const dx=s.to[0]-P.x,dz=s.to[1]-P.z,l=Math.hypot(dx,dz);
+    if(l<.25){b.q.shift();return;}const st=Math.min(l,b.spd*dt);P.x+=dx/l*st;P.z+=dz/l*st;b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(dx,dz),Math.min(1,dt*8));AX.walk(b.a,b.spd,dt);}
+  else if(s.away!==undefined){b.away=true;s.away-=dt;if(s.away<=0){b.away=false;b.q.shift();}}
+  else{if(s.face)b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(s.face[0]-P.x,s.face[1]-P.z),Math.min(1,dt*5));AX.walk(b.a,0,dt);s.wait-=dt;if(s.wait<=0)b.q.shift();}}
 
 const burstSys=new Smoke(scene,'#e8a01a');
 function burst(){if(!player.obj)return;const p=player.pos.clone();p.y=1.8;for(let i=0;i<8;i++)burstSys.emit(p,400,.003);}
@@ -1038,7 +1067,7 @@ function drawMinimap(){const w=mm.width,h=mm.height,X=x=>8+(x+HX)/(HX*2)*(w-16),
   mx.setLineDash([6,5]);mx.strokeStyle='#2e6a3e';mx.strokeRect(X(-21),Z(-16),10*s,10*s);mx.setLineDash([]);
   [['#2e6a3e',-27.4,4.2,'Р'],['#6d4b2f',-24,-16.5,'К'],['#e8a01a',-6,-5.2,'?'],['#2e6a3e',31,0,'→']].forEach(p=>{mx.fillStyle=p[0];mx.beginPath();mx.arc(X(p[1]),Z(p[2]),11,0,7);mx.fill();mx.fillStyle='#fff';mx.font='800 13px "Golos Text",sans-serif';mx.fillText(p[3],X(p[1]),Z(p[2])+5);});
   mx.fillStyle='#14181b';mx.fillRect(X(-9.3),Z(-3.8),.6*s,7.6*s);
-  bots.forEach(b=>{mx.fillStyle='#7d8b81';mx.beginPath();mx.arc(X(b.a.position.x),Z(b.a.position.z),4,0,7);mx.fill();});
+  bots.forEach(b=>{if(!b.a.visible)return;mx.fillStyle='#7d8b81';mx.beginPath();mx.arc(X(b.a.position.x),Z(b.a.position.z),4,0,7);mx.fill();});
   NET.peers.forEach(p=>{if(!p.seen||p.w==='field')return;mx.fillStyle=p.c;mx.beginPath();mx.arc(X(p.cur.x),Z(p.cur.z),7,0,7);mx.fill();mx.strokeStyle='#fff';mx.lineWidth=2.5;mx.stroke();});
   if(objCache){const t=performance.now()/300;mx.strokeStyle='#e8a01a';mx.lineWidth=3;mx.beginPath();mx.arc(X(objCache.p.x),Z(objCache.p.z),10+Math.sin(t)*3,0,7);mx.stroke();}
   mx.save();mx.translate(X(player.pos.x),Z(player.pos.z));mx.rotate(-player.rot+Math.PI);mx.fillStyle='#16231b';mx.beginPath();mx.moveTo(0,-12);mx.lineTo(8,9);mx.lineTo(0,4);mx.lineTo(-8,9);mx.closePath();mx.fill();mx.strokeStyle='#fff';mx.lineWidth=2;mx.stroke();mx.restore();
@@ -1069,9 +1098,9 @@ function tick(now){
   player.vy-=16*dt;player.y=Math.max(0,player.y+player.vy*dt);if(player.y<=0)player.vy=0;
   player.obj.position.set(player.pos.x,player.y,player.pos.z);player.obj.rotation.y=player.rot;AX.walk(player.obj,player.y>0?0:spd,dt);
   player.label.position.set(player.pos.x,2.45+player.y,player.pos.z);
-  bots.forEach(b=>{if(b.wait>0){b.wait-=dt;AX.walk(b.a,0,dt);}else{const dx=b.tgt[0]-b.a.position.x,dz=b.tgt[1]-b.a.position.z,l=Math.hypot(dx,dz);
-      if(l<.3){b.wait=1+Math.random()*4;b.tgt=WAY[Math.floor(Math.random()*WAY.length)];}else{b.a.position.x+=dx/l*b.spd*dt;b.a.position.z+=dz/l*b.spd*dt;b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(dx,dz),Math.min(1,dt*8));AX.walk(b.a,b.spd,dt);}}
-    b.l.position.set(b.a.position.x,2.35,b.a.position.z);});
+  // живых игроков больше — ботов меньше (минимум трое, чтобы павильон не пустел)
+  const nb=bots.length-Math.min(NET.peers.size,bots.length-3);
+  bots.forEach((b,i)=>{b.on=i<nb;b.a.visible=b.l.visible=b.on&&!b.away;if(!b.on)return;botTick(b,dt);b.l.position.set(b.a.position.x,2.35,b.a.position.z);});
   netUpdate(dt);
   spinners.forEach(s=>{if(s.on)s.turn.rotation.y+=dt*.22;});
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
