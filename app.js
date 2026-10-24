@@ -101,9 +101,9 @@ if(!S.vid){S.vid=uid();save();}
 function track(action){if(!TRK.on)return;
   TRK.q.push({visitor:S.vid,session:TRK.sid,nick:S.nick,role:(ROLES[S.role]||{}).n||null,region:S.farm.region,farm:S.farm.name,points:S.points,level:level(),action:String(action).slice(0,300)});
   if(TRK.q.length>200)TRK.q.shift();}
+function sbHeaders(x){const h=Object.assign({'Content-Type':'application/json',apikey:CFG.supabaseKey},x);if(!CFG.supabaseKey.startsWith('sb_'))h.Authorization='Bearer '+CFG.supabaseKey;return h;}
 function trackFlush(leaving){if(!TRK.on||(TRK.busy&&!leaving)||!TRK.q.length)return;const rows=TRK.q.splice(0,50);TRK.busy=true;
-  const h={'Content-Type':'application/json',apikey:CFG.supabaseKey,Prefer:'return=minimal'};if(!CFG.supabaseKey.startsWith('sb_'))h.Authorization='Bearer '+CFG.supabaseKey;
-  fetch(CFG.supabaseUrl.replace(/\/+$/,'')+'/rest/v1/events',{method:'POST',headers:h,body:JSON.stringify(rows),keepalive:!!leaving})
+  fetch(CFG.supabaseUrl.replace(/\/+$/,'')+'/rest/v1/events',{method:'POST',headers:sbHeaders({Prefer:'return=minimal'}),body:JSON.stringify(rows),keepalive:!!leaving})
     .then(r=>{if(r.status>=500||r.status===429)throw 0;if(!r.ok)console.warn('Журнал: сервер ответил',r.status);})
     .catch(()=>{if(!leaving)TRK.q.unshift(...rows);}).finally(()=>{TRK.busy=false;});}
 if(TRK.on){setInterval(trackFlush,4000);
@@ -182,13 +182,20 @@ function sheetQuests(){
   const acts=[['Посетить стенд','+10'],['Открыть карточку техники','+5'],['Осмотреть трактор','+10'],['Собрать буклет','+15'],['Верный ответ в квизе','+10'],['Тест-драйв','+50'],['Сам за рулём','+30'],['Заявка экспоненту','+40']].map(a=>`<div>${a[0]}</div><div>${a[1]}</div>`).join('');
   openSheet('quests','Квесты дня',`<ul class="list">${qs}</ul><div class="eyebrow">Ачивки</div><div class="badges">${bs}</div><div class="eyebrow">За что дают баллы</div><div class="spec">${acts}</div>`);
 }
-function leaderRows(){return FARMS.concat([{n:S.farm.name,r:S.farm.region,p:S.points,me:true}]).sort((a,b)=>b.p-a.p);}
+// Живой рейтинг дня из Supabase (функция leaders_today); пока его нет — демо-хозяйства FARMS.
+const LIVE={rows:null};let lbTab='farms';
+function leadersFetch(){if(!TRK.on)return;
+  fetch(CFG.supabaseUrl.replace(/\/+$/,'')+'/rest/v1/rpc/leaders_today',{method:'POST',headers:sbHeaders(),body:'{}'})
+    .then(r=>r.ok?r.json():null).then(d=>{if(!Array.isArray(d))return;LIVE.rows=d;if(W.ready)drawBoard();if(sheetKind==='leaders')sheetLeaders(lbTab);}).catch(()=>{});}
+function leaderRows(){const me={n:S.farm.name,r:S.farm.region,p:S.points,me:true};
+  const others=LIVE.rows?LIVE.rows.filter(x=>x.visitor!==S.vid).map(x=>({n:x.farm||x.nick,k:x.nick,r:x.region||'',p:x.points})):FARMS;
+  return others.concat([me]).sort((a,b)=>b.p-a.p);}
 function sheetLeaders(tab){
-  tab=tab||'farms';let rows;
-  if(tab==='farms')rows=leaderRows().map((f,i)=>`<div class="r ${f.me?'me':''}"><span class="n">${i+1}</span><div><div>${esc(f.n)}${f.me?' · вы':''}</div><div class="sub">${esc(f.r)}</div></div><span class="p">${fmt(f.p)}</span></div>`).join('');
+  tab=lbTab=tab||'farms';let rows;
+  if(tab==='farms')rows=leaderRows().map((f,i)=>`<div class="r ${f.me?'me':''}"><span class="n">${i+1}</span><div><div>${esc(f.n)}${f.me?' · вы':''}</div><div class="sub">${esc(f.k?f.k+' · '+f.r:f.r)}</div></div><span class="p">${fmt(f.p)}</span></div>`).join('');
   else{const m={};leaderRows().forEach(f=>{m[f.r]=(m[f.r]||0)+f.p});rows=Object.entries(m).sort((a,b)=>b[1]-a[1]).map((e,i)=>`<div class="r ${e[0]===S.farm.region?'me':''}"><span class="n">${i+1}</span><div>${esc(e[0])}<div class="sub">${e[0]===S.farm.region?'ваш регион':''}</div></div><span class="p">${fmt(e[1])}</span></div>`).join('');}
   const L=leaderRows(),me=L.findIndex(f=>f.me)+1,above=L[me-2];
-  const hint=above?`До ${me-1}-го места — <b>${fmt(above.p-S.points+1)}</b> баллов. Обойдите «${esc(above.n)}».`:'Вы на первом месте. Удержите лидерство до конца дня.';
+  const hint=(LIVE.rows?'Живой рейтинг: все, кто играл сегодня. ':'')+(above?`До ${me-1}-го места — <b>${fmt(above.p-S.points+1)}</b> баллов. Обойдите «${esc(above.n)}».`:'Вы на первом месте. Удержите лидерство до конца дня.');
   openSheet('leaders','Таблица лидеров',`<div class="tabs" role="tablist"><button role="tab" aria-selected="${tab==='farms'}" data-t="farms" data-key="1">Хозяйства</button><button role="tab" aria-selected="${tab==='regions'}" data-t="regions" data-key="2">Регионы</button></div><div class="note">${hint}</div><div class="lb">${rows}</div>`,
     b=>b.querySelectorAll('[data-t]').forEach(x=>x.onclick=()=>sheetLeaders(x.dataset.t)));
 }
@@ -251,7 +258,7 @@ function sheetHelp(){
   <div class="eyebrow">Меню</div><div class="keys">${[K(['Q'],'квесты'),K(['R'],'рейтинг'),K(['T'],'навигация и телепорт'),K(['B'],'бонусы'),K(['F'],'моя ферма'),K(['G'],'дашборд'),K(['N'],'звук вкл/выкл'),K(['1','…','9'],'кнопки в открытой панели'),K(['Esc'],'закрыть')].join('')}</div>
   <div class="eyebrow">В поле</div><div class="keys">${[K(['W','S'],'газ, тормоз'),K(['A','D'],'руль'),K(['Space'],'опустить или поднять плуг'),K(['V'],'вид камеры'),K(['Enter'],'завершить вспашку')].join('')}</div>`);
 }
-const NAV={quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>sheetLeaders()),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
+const NAV={quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
 document.querySelectorAll('#nav [data-open]').forEach(b=>b.onclick=()=>NAV[b.dataset.open]());
 
 /* ================= РЕГИСТРАЦИЯ ================= */
@@ -1135,7 +1142,7 @@ function tick(now){
 }
 
 function start(){
-  W.ready=true;rebuildPlayer();netInit();drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
+  W.ready=true;rebuildPlayer();netInit();leadersFetch();if(TRK.on)setInterval(leadersFetch,30000);drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
   $('#loading').remove();
   if(S.registered){closeReg();updateHUD();}else{openReg(1);updateHUD();}
   if(location.hash==='#dashboard')openDash();

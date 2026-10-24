@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>АгроЭкспо 3D · статистика</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+[hidden]{display:none!important}
+/* Админка: шапка с периодом, плитки цифр, графики посещаемости и действий, таблица посетителей с лентой действий каждого */
+:root{
+  --ink:#16231b; --ink-2:#4b5b50; --ink-3:#7d8b81;
+  --paper:#f3f5f0; --panel:#fbfcf9; --line:#d5ddd2; --tint:#e8eee4;
+  --field:#2e6a3e; --field-2:#dcebd8; --signal:#e8a01a; --signal-ink:#4a3200;
+  --danger:#b8402c; --night:#121c16;
+  --f-display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.4}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3{margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+header h1{font-family:var(--f-display);font-size:20px;font-weight:800}
+header h1 span{color:var(--field)}
+.seg{display:flex;background:var(--tint);border-radius:10px;padding:3px}
+.seg button{border:0;background:none;padding:7px 12px;border-radius:8px;font-weight:600;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px #0001}
+.btn{border:0;border-radius:10px;padding:10px 16px;font-weight:700;background:var(--field);color:#fff}
+.btn.ghost{background:var(--tint);color:var(--ink)}
+.right{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--ink-3)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.card h3{font-size:13px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
+.grid{display:grid;gap:12px}
+.grid>*{min-width:0}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
+.kpi b{display:block;font-family:var(--f-mono);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi span{color:var(--ink-3);font-size:12px}
+.two{grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));margin-bottom:12px}
+/* столбики посещаемости */
+.cols{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:6px}
+.cols div{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+.cols i{display:block;width:100%;max-width:28px;background:var(--field);border-radius:4px 4px 0 0;min-height:2px}
+.cols div:hover i{background:var(--signal)}
+.cols small{font-size:10px;color:var(--ink-3);margin-top:4px;white-space:nowrap;font-family:var(--f-mono)}
+/* горизонтальные полосы */
+.bars{display:grid;grid-template-columns:minmax(0,150px) 1fr auto;gap:7px 10px;align-items:center}
+.bars .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars .b{height:10px;background:var(--tint);border-radius:5px;overflow:hidden}
+.bars .b i{display:block;height:100%;background:var(--field);border-radius:5px}
+.bars .v{font-family:var(--f-mono);font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;color:var(--ink-3);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--tint);vertical-align:top}
+td.n{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.n{text-align:right}
+tr.v{cursor:pointer}
+tr.v:hover td{background:var(--tint)}
+tr.v.open td{background:var(--field-2)}
+.scroll{overflow-x:auto}
+.feed{list-style:none;margin:0;padding:0;max-height:420px;overflow:auto}
+.feed li{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:7px 0;border-bottom:1px solid var(--tint)}
+.feed time{font-family:var(--f-mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+.feed .who{font-weight:600}
+.online{display:flex;flex-wrap:wrap;gap:6px}
+.online span{background:var(--field-2);border-radius:20px;padding:4px 10px;font-weight:600}
+.online span::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#3fbf5f;margin-right:6px;vertical-align:1px}
+.login{max-width:380px;margin:12vh auto 0}
+.login h1{font-family:var(--f-display);font-size:20px;margin-bottom:6px}
+.login label{display:block;font-weight:600;margin:14px 0 5px}
+.login input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.login .btn{width:100%;margin-top:18px}
+.err{color:var(--danger);margin-top:10px;min-height:20px}
+.timeline td{background:var(--field-2)}
+.timeline ul{margin:0;padding:0 0 0 4px;list-style:none;max-height:300px;overflow:auto}
+.timeline li{padding:3px 0}
+.timeline time{font-family:var(--f-mono);font-size:12px;color:var(--ink-2);margin-right:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form class="card login" id="login" hidden>
+    <h1>Статистика выставки</h1>
+    <p class="muted" style="margin:0">Вход для организатора. Пользователя создают в Supabase → Authentication → Users.</p>
+    <label for="em">Email</label><input id="em" type="email" autocomplete="username" required>
+    <label for="pw">Пароль</label><input id="pw" type="password" autocomplete="current-password" required>
+    <button class="btn" type="submit">Войти</button>
+    <div class="err" id="lerr"></div>
+  </form>
+
+  <main id="app" hidden>
+    <header>
+      <h1>АгроЭкспо 3D · <span>статистика</span></h1>
+      <div class="right">
+        <div class="seg" id="range">
+          <button data-d="0" aria-pressed="true">Сегодня</button><button data-d="7" aria-pressed="false">7 дней</button><button data-d="30" aria-pressed="false">30 дней</button><button data-d="-1" aria-pressed="false">Всё время</button>
+        </div>
+        <button class="btn ghost" id="refresh">Обновить</button>
+        <button class="btn ghost" id="out">Выйти</button>
+      </div>
+    </header>
+
+    <div class="card" style="margin-bottom:12px"><h3>Сейчас на выставке</h3><div class="online" id="online"><span class="muted" style="background:none;padding:0">подключаюсь…</span></div></div>
+    <div class="grid kpis" id="kpis"></div>
+    <div class="grid two">
+      <div class="card"><h3 id="colsT">Посетители</h3><div class="cols" id="cols"></div></div>
+      <div class="card"><h3>Что делают на выставке</h3><div class="bars" id="acts"></div></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h3>Интерес к моделям</h3><div class="scroll"><table id="models"></table></div></div>
+      <div class="card"><h3>Регионы</h3><div class="bars" id="regions"></div></div>
+    </div>
+    <div class="card" style="margin-bottom:12px"><h3>Посетители · нажмите на строку, чтобы увидеть действия</h3><div class="scroll"><table id="vis"></table></div></div>
+    <div class="card"><h3>Последние действия</h3><ul class="feed" id="feed"></ul></div>
+    <p class="muted" id="foot" style="margin-top:14px"></p>
+  </main>
+</div>
+
+<script src="config.js?v=4"></script>
+<script src="vendor/supabase.js?v=2.117.3"></script>
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Math.round(n).toLocaleString('ru-RU');
+const CFG=window.AGRO_CFG||{};
+if(!CFG.supabaseUrl||!CFG.supabaseKey||!window.supabase){document.body.innerHTML='<p style="padding:24px">В config.js не задан проект Supabase.</p>';return;}
+const sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);
+const MODELS=['СМ-2400','КТ-180','ПП-300'];
+// группы действий: подпись и правило по тексту из журнала игры
+const ACTS=[
+  ['Открыли страницу',/^(Открыл страницу|Вернулся)/],['Зарегистрировались',/^Регистрация/],['Зашли на стенд',/^Стенд /],
+  ['Открыли карточку',/^Карточка /],['Осмотрели трактор',/^Осмотр /],['Взяли буклет',/^Буклет /],['Спросили консультанта',/^Вопрос консультанту/],
+  ['Верно в квизе',/^Верный ответ/],['Ошиблись в квизе',/^Квиз: вопрос/],['Прошли тест-драйв',/^Тест-драйв .*выгода/],
+  ['Пахали сами',/^Вспашка: покрыто/],['Оставили заявку',/^Заявка:/],['Выпили кофе',/^Кофе/]];
+let days=0,rows=[],openV=null;
+
+function since(){if(days<0)return null;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-Math.max(0,days-1));return d;}
+async function load(){
+  $('#foot').textContent='Загружаю…';const s=since(),all=[];
+  for(let from=0;from<20000;from+=1000){let q=sb.from('events').select('at,visitor,session,nick,role,region,farm,points,level,action').order('at',{ascending:false}).range(from,from+999);
+    if(s)q=q.gte('at',s.toISOString());const {data,error}=await q;
+    if(error){$('#foot').textContent='Ошибка загрузки: '+error.message;return;}all.push(...data);if(data.length<1000)break;}
+  rows=all;render();
+  $('#foot').textContent='Записей за период: '+fmt(rows.length)+' · обновлено '+new Date().toLocaleTimeString('ru-RU');
+  if(!rows.length&&!(await sb.from('events').select('at').limit(1)).data?.length)$('#foot').textContent+=' · журнал пуст или у этого пользователя нет прав (выполнен ли supabase-2-leaders-admin.sql?)';}
+
+function byVisitor(){const m=new Map();
+  rows.forEach(r=>{let v=m.get(r.visitor);if(!v){v={id:r.visitor,nick:r.nick,role:r.role,region:r.region,farm:r.farm,points:0,level:1,sessions:new Set(),n:0,first:r.at,last:r.at,ev:[]};m.set(r.visitor,v);}
+    v.points=Math.max(v.points,r.points||0);v.level=Math.max(v.level,r.level||1);v.sessions.add(r.session);v.n++;v.ev.push(r);if(r.at<v.first)v.first=r.at;});
+  return [...m.values()].sort((a,b)=>b.last<a.last?-1:1);}
+const t=s=>new Date(s).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const tm=s=>new Date(s).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+function bars(el,list){const max=Math.max(1,...list.map(x=>x[1]));
+  el.innerHTML=list.length?list.map(([n,v])=>`<span class="t" title="${esc(n)}">${esc(n)}</span><span class="b"><i style="width:${v/max*100}%"></i></span><span class="v">${fmt(v)}</span>`).join(''):'<span class="muted">Пока пусто</span>';}
+
+function render(){
+  const V=byVisitor(),cnt=re=>rows.filter(r=>re.test(r.action)).length;
+  const reg=V.filter(v=>v.ev.some(e=>/^Регистрация/.test(e.action))||v.points>0).length;
+  const sess=new Set(rows.map(r=>r.session)).size;
+  const avg=V.length?V.reduce((a,v)=>a+v.points,0)/V.length:0;
+  const mins=rows.filter(r=>/^Ушёл/.test(r.action)).map(r=>+(r.action.match(/(\d+) мин/)||[0,0])[1]);
+  const K=[[V.length,'посетителей'],[sess,'заходов'],[reg,'играли (регистрация или баллы)'],[mins.length?Math.round(mins.reduce((a,b)=>a+b,0)/mins.length):0,'минут в среднем за заход'],
+    [cnt(/^Тест-драйв .*выгода/),'тест-драйвов'],[cnt(/^Заявка:/),'заявок экспонентам'],[Math.round(avg),'баллов в среднем']];
+  $('#kpis').innerHTML=K.map(k=>`<div class="card kpi"><b>${fmt(k[0])}</b><span>${k[1]}</span></div>`).join('');
+  // посещаемость: сегодня по часам, иначе по дням
+  const buckets=[];
+  if(days===0){$('#colsT').textContent='Посетители по часам';for(let h=0;h<24;h++)buckets.push({k:h,l:String(h),s:new Set()});rows.forEach(r=>buckets[new Date(r.at).getHours()].s.add(r.visitor));}
+  else{$('#colsT').textContent='Посетители по дням';const end=new Date();end.setHours(0,0,0,0);
+    const first=days>0?days:Math.min(60,Math.max(1,Math.ceil((end-new Date(rows.length?rows[rows.length-1].at:end))/864e5)+1));
+    for(let i=first-1;i>=0;i--){const d=new Date(end);d.setDate(d.getDate()-i);buckets.push({k:d.toDateString(),l:d.getDate()+'.'+(d.getMonth()+1),s:new Set()});}
+    const idx=new Map(buckets.map((b,i)=>[b.k,i]));rows.forEach(r=>{const i=idx.get(new Date(r.at).toDateString());if(i!==undefined)buckets[i].s.add(r.visitor);});}
+  const mx=Math.max(1,...buckets.map(b=>b.s.size)),every=Math.ceil(buckets.length/12);
+  $('#cols').innerHTML=buckets.map((b,i)=>`<div title="${esc(b.l)}: ${b.s.size}"><i style="height:${b.s.size/mx*100}%"></i><small>${i%every?'&nbsp;':esc(b.l)}</small></div>`).join('');
+  bars($('#acts'),ACTS.map(([n,re])=>[n,cnt(re)]).filter(x=>x[1]>0));
+  const reg2={};V.forEach(v=>{if(v.region&&v.points>0)reg2[v.region]=(reg2[v.region]||0)+1;});
+  bars($('#regions'),Object.entries(reg2).sort((a,b)=>b[1]-a[1]));
+  const M=MODELS.map(m=>{const has=re=>rows.filter(r=>re.test(r.action)&&r.action.includes(m)).length;return [m,has(/^Карточка /),has(/^Осмотр /),has(/^Тест-драйв .*выгода/),has(/^Заявка:/)];});
+  $('#models').innerHTML='<tr><th>Модель</th><th class="n">Карточка</th><th class="n">Осмотр</th><th class="n">Тест-драйв</th><th class="n">Заявки</th></tr>'+M.map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(v=>`<td class="n">${fmt(v)}</td>`).join('')}</tr>`).join('');
+  $('#vis').innerHTML='<tr><th>Ник</th><th>Хозяйство · регион</th><th>Роль</th><th class="n">Баллы</th><th class="n">Ур.</th><th class="n">Заходы</th><th class="n">Действия</th><th>Первый</th><th>Последний</th></tr>'+
+    (V.length?V.map(v=>`<tr class="v${openV===v.id?' open':''}" data-v="${v.id}"><td><b>${esc(v.nick)}</b></td><td>${esc(v.farm)}<div class="muted">${esc(v.region)}</div></td><td>${esc(v.role)}</td><td class="n">${fmt(v.points)}</td><td class="n">${v.level}</td><td class="n">${v.sessions.size}</td><td class="n">${v.n}</td><td class="n">${t(v.first)}</td><td class="n">${t(v.last)}</td></tr>`+
+      (openV===v.id?`<tr class="timeline"><td colspan="9"><ul>${v.ev.map(e=>`<li><time>${t(e.at)}</time>${esc(e.action)} <span class="muted">· ${fmt(e.points||0)} б.</span></li>`).join('')}</ul></td></tr>`:'')).join(''):'<tr><td colspan="9" class="muted">За этот период никого</td></tr>');
+  $('#vis').querySelectorAll('tr.v').forEach(tr=>tr.onclick=()=>{openV=openV===tr.dataset.v?null:tr.dataset.v;render();});
+  $('#feed').innerHTML=rows.slice(0,80).map(r=>`<li><time>${days===0?tm(r.at):t(r.at)}</time><span><span class="who">${esc(r.nick)}</span> — ${esc(r.action)}</span></li>`).join('')||'<li class="muted">Пока пусто</li>';
+}
+
+// кто сейчас в павильоне: слушаем тот же канал присутствия, что и игра, сами не появляемся
+function watchOnline(){const ch=sb.channel('expo',{config:{presence:{key:'admin-'+Math.random().toString(36).slice(2)}}});
+  ch.on('presence',{event:'sync'},()=>{const st=ch.presenceState(),L=Object.values(st).map(a=>a[0]).filter(m=>m&&m.n);
+    $('#online').innerHTML=L.length?L.map(m=>`<span>${esc(m.n)} · ур. ${esc(m.lv)}</span>`).join(''):'<span class="muted" style="background:none;padding:0">Никого. Живые игроки появятся здесь сразу, как зайдут.</span>';}).subscribe();}
+
+$('#range').querySelectorAll('button').forEach(b=>b.onclick=()=>{days=+b.dataset.d;$('#range').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));openV=null;load();});
+$('#refresh').onclick=load;
+$('#out').onclick=async()=>{await sb.auth.signOut();location.reload();};
+$('#login').onsubmit=async e=>{e.preventDefault();$('#lerr').textContent='';
+  const {error}=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});
+  if(error){$('#lerr').textContent=error.message==='Invalid login credentials'?'Неверный email или пароль':error.message;return;}show();};
+let started=false;
+function show(){$('#login').hidden=true;$('#app').hidden=false;if(started)return;started=true;load();watchOnline();setInterval(()=>{if(!document.hidden)load();},60000);}
+sb.auth.getSession().then(({data})=>{if(data.session)show();else $('#login').hidden=false;});
+})();
+</script>
+</body>
+</html>
