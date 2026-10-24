@@ -81,12 +81,15 @@ const PLACES=[
 
 /* ================= СОСТОЯНИЕ ================= */
 const KEY='agroexpo3d.v1';
-const DEF={v:1,registered:false,nick:'Гость-417',role:0,color:'#3d6db0',hat:'cap',
+// у каждого гостя свой номер, чтобы не смешивать всех в одного «Гость-417»
+const GUEST='Гость-'+(100+Math.floor(Math.random()*900));
+const DEF={v:1,registered:false,nick:GUEST,role:0,color:'#3d6db0',hat:'cap',
   farm:{name:'КФХ «Рассвет»',region:'Тамбовская',area:1200,crop:'wheat',tractor:'mtz1221',count:3,sat:false},
   points:0,awards:{},visited:{},viewed:{},faq:{},leads:{},drives:0,best:null,events:[],quiz:{},plow:null,sound:true};
 let S;try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null}
 if(!S||S.v!==1)S=JSON.parse(JSON.stringify(DEF));
 for(const k in DEF)if(S[k]===undefined)S[k]=JSON.parse(JSON.stringify(DEF[k]));
+if(S.nick==='Гость-417'||S.nick==='Гость'){S.nick=GUEST;save();}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 const level=()=>1+Math.floor(S.points/120);
 const title=()=>TITLES[Math.min(TITLES.length-1,level()-1)];
@@ -172,7 +175,7 @@ function pressIn(layer,k){if(!layer)return false;const el=[...layer.querySelecto
 /* ================= SHEETS ================= */
 let sheetKind=null;
 function openSheet(kind,t,html,mount){sheetKind=kind;$('#sheetTitle').textContent=t;$('#sheetBody').innerHTML=html;$('#sheet').hidden=false;if(mount)mount($('#sheetBody'));decorate($('#sheetBody'));}
-function closeSheet(){$('#sheet').hidden=true;sheetKind=null;}
+function closeSheet(){$('#sheet').hidden=true;sheetKind=null;curInter=null;} // подсказка рядом перерисуется с новыми данными
 $('#sheetX').onclick=closeSheet;
 function toggleSheet(kind,fn){if(sheetKind===kind)closeSheet();else fn();}
 
@@ -275,13 +278,13 @@ function openReg(step){
     <div><div class="eyebrow" style="margin-bottom:8px">Головной убор</div><div class="seg">${[['cap','Кепка'],['helmet','Каска'],['none','Без']].map(h=>`<button aria-pressed="${S.hat===h[0]}" data-h="${h[0]}">${h[1]}</button>`).join('')}</div><button class="btn ghost" id="rHat" data-key="H" style="margin-top:8px;padding:6px 10px">Следующий убор</button></div>`;
     $('#regFoot').innerHTML=`<span class="hint">Мышь не обязательна: цифры, <kbd>C</kbd>, <kbd>H</kbd>, <kbd>Enter</kbd></span><button class="btn" id="rNext" data-key="Enter">Дальше</button>`;
     const b=$('#regBody');
-    b.querySelector('#rNick').oninput=e=>{S.nick=e.target.value.trim()||'Гость';player.label.userData.draw(S.nick,'Ур. '+level());};
+    b.querySelector('#rNick').oninput=e=>{S.nick=e.target.value.trim()||GUEST;player.label.userData.draw(S.nick,'Ур. '+level());};
     b.querySelectorAll('[data-r]').forEach(x=>x.onclick=()=>{S.nick=$('#rNick').value.trim()||S.nick;S.role=+x.dataset.r;S.color=ROLES[S.role].color;S.hat=ROLES[S.role].hat;openReg(1);rebuildPlayer();});
     b.querySelectorAll('[data-c]').forEach(x=>x.onclick=()=>{S.color=x.dataset.c;openReg(1);rebuildPlayer();});
     b.querySelector('#rCol').onclick=()=>{S.color=SWATCH[(SWATCH.indexOf(S.color)+1)%SWATCH.length];openReg(1);rebuildPlayer();};
     b.querySelectorAll('[data-h]').forEach(x=>x.onclick=()=>{S.hat=x.dataset.h;openReg(1);rebuildPlayer();});
     b.querySelector('#rHat').onclick=()=>{const H=['cap','helmet','none'];S.hat=H[(H.indexOf(S.hat)+1)%3];openReg(1);rebuildPlayer();};
-    $('#rNext').onclick=()=>{S.nick=$('#rNick').value.trim()||'Гость';save();openReg(2)};
+    $('#rNext').onclick=()=>{S.nick=$('#rNick').value.trim()||GUEST;save();openReg(2)};
   }else{
     const f=S.farm;
     $('#regBody').innerHTML=`<label class="f">Название хозяйства<input id="rFarm" maxlength="40" value="${esc(f.name)}"></label>
@@ -858,9 +861,9 @@ function drawDriveSide(){
     <div class="chart"><div class="eyebrow" style="margin-bottom:6px">Затраты на работы за сезон</div>${costSVG(R)}</div>
     <div style="overflow-x:auto"><table class="cmp"><thead><tr><th></th><th>${esc(R.own.n)}</th><th>${esc(R.ex.n)}</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="small muted" style="margin:0;line-height:1.5">Вложения: ${R.b.count} × ${money(R.ex.price)} минус трейд-ин ${R.a.count} × ${money(R.own.trade)} = ${money(R.capex)}. Дизель ${FUEL} ₽/л, механизатор ${WAGE} ₽/ч, смена ${SHIFT} ч. Цифры экспонентов демонстрационные.</p>
-    ${S.leads[F.ex]?`<div class="note">Заявка на ${esc(R.ex.n)} уже сохранена.</div>`:F.lead?`<form id="dLead" class="stepcard on"><h3>Запросить предложение у ${esc(R.ex.brand)}</h3>
+    ${S.leads[F.ex]?`<div class="note">Заявка на ${esc(R.ex.n)} сохранена в демо-режиме. Экспонент её не получит: отправка появится в рабочей версии.</div>`:F.lead?`<form id="dLead" class="stepcard on"><h3>Запросить предложение у ${esc(R.ex.brand)} <span class="pill">демо</span></h3>
       <label class="f">Имя<input id="lName" required value="${esc(S.nick)}"></label><label class="f">Телефон<input id="lPhone" type="tel" required placeholder="+7 900 000-00-00"></label>
-      <button class="btn signal" type="submit" data-key="Enter">Отправить заявку</button><span class="small muted">В демо заявка сохраняется здесь и попадает в дашборд. В рабочей версии она уйдёт экспоненту.</span></form>`
+      <button class="btn signal" type="submit" data-key="Enter">Сохранить заявку</button><span class="small muted">Это демо: заявка остаётся в вашем браузере, экспоненту она не уходит, а телефон никуда не отправляется. В рабочей версии экспонент получит заявку сразу.</span></form>`
       :`<button class="btn signal" id="dLeadBtn" data-key="L">Запросить предложение</button>`}
     ${pickHTML(false)}
     <div class="list"><button class="btn" id="dAgain" data-key="R">Сезон ещё раз</button><button class="btn" id="dMan" data-key="M">Сам за рулём</button><button class="btn ghost" id="dBack" data-key="Backspace">В павильон</button></div>`;
@@ -982,7 +985,7 @@ function heatSVG(){const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
   hrs.forEach((hh,j)=>s+=`<text x="${pl+j*cw+cw/2}" y="${h-6}" text-anchor="middle" font-size="11" fill="#7d8b81" font-family="JetBrains Mono,monospace">${hh}:00</text>`);return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Активность по часам">${s}</svg>`;}
 function openDash(){closeSheet();$('#dash').hidden=false;
   const mine={visits:Object.keys(S.visited).length,drives:S.drives,leads:Object.keys(S.leads).length};const visits=12480+mine.visits,drives=1932+mine.drives,leads=214+mine.leads;
-  $('#dashBody').innerHTML=`<p class="muted" style="margin:0;max-width:65ch;line-height:1.5">Сводка для экспонентов и инвесторов за 14 дней пилота. Цифры демонстрационные, но действия в этой сессии добавляются к ним вживую.</p>
+  $('#dashBody').innerHTML=`<p class="muted" style="margin:0;max-width:65ch;line-height:1.5">Так экспонент будет видеть свои показатели. Цифры выдуманы для примера, к ним вживую добавляются ваши действия в этой сессии. Настоящая статистика выставки есть у организатора.</p>
   <div class="kpis"><div class="kpi"><div class="k">Посещения стендов</div><div class="v">${fmt(visits)}</div><div class="d">+18% к прошлой неделе</div></div>
     <div class="kpi"><div class="k">Тест-драйвы</div><div class="v">${fmt(drives)}</div><div class="d">${fmt1(drives/visits*100)}% посетителей</div></div>
     <div class="kpi"><div class="k">Заявки экспонентам</div><div class="v">${fmt(leads)}</div><div class="d">${fmt1(leads/drives*100)}% после тест-драйва</div></div>
@@ -1057,9 +1060,10 @@ function nearestTractor(){let best=null,bd=7;inter.forEach(it=>{if(it.kind!=='tr
 function doInter(it){
   if(it.kind==='tractor')sheetTractor(it.t);else if(it.kind==='kiosk')openDrive(it.t);else if(it.kind==='faq')sheetFAQ();
   else if(it.kind==='desk')sheetFarm();else if(it.kind==='gate')openDrive();else if(it.kind==='quiz')sheetQuiz();
-  else if(it.kind==='coffee'){if(!award('coffee',5,'Кофе за счёт выставки'))toast('Ещё чашку? Баллы за кофе — один раз в день');}
+  else if(it.kind==='coffee'){if(!award('coffee_'+new Date().toLocaleDateString('sv'),5,'Кофе за счёт выставки'))toast('Ещё чашку? Баллы за кофе — один раз в день');}
   else if(it.kind==='free')toast('Это место для нового экспонента. В рабочей версии — <b>бронь стенда</b> из личного кабинета');
   else if(it.kind==='book'){if(award('book_'+it.stand.id,15,'Буклет '+it.stand.brand))it.tag.visible=false;else toast('Буклет этого стенда уже у вас');}
+  curInter=null;
 }
 function promptFor(it){
   if(it.kind==='tractor'){const t=EXPO[it.t];return [t.brand+' '+t.n,`${t.hp} л.с. · ${fmt1(t.fuel/t.prod)} л/га · ${money(t.price)}`,'Карточка','<span class="tag" style="background:var(--tint);color:var(--ink)"><kbd>I</kbd> осмотр</span>'];}
