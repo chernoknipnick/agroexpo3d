@@ -584,10 +584,9 @@ STANDS.forEach(buildStand);
   const l=makeLabel(3.2,{bg:'rgba(109,75,47,.95)'});l.userData.draw('Кофе-поинт','+5');l.position.set(0,2.6,0);g.add(l);
   const b=AX.makeHuman({shirt:'#222',pants:'#222',skin:'#e9c3a0',hat:'cap',hatColor:'#6d4b2f'});b.position.set(0,0,-1.0);g.add(b);
   [-1.6,0,1.6].forEach(x=>addCol(-24+x,-16.5,.8));inter.push({kind:'coffee',pos:new V3(-24,0,-15.2),r:2.2});})();
-// пасхалка: в дальнем углу за растением кристалл, который превращает посетителя в эльфа (на мини-карте его нет)
-const elfStone=(function(){const g=new T.Group();g.position.set(28.4,0,-19.2);scene.add(g);cyl(.26,.32,.7,16,std('#d9ddd5',.1,.6),g,0,.35,0);
-  const c=new T.Mesh(new T.OctahedronGeometry(.22,0),new T.MeshStandardMaterial({color:'#7dffb0',emissive:'#2bd67b',emissiveIntensity:1.6,roughness:.2}));c.position.y=.95;c.castShadow=true;g.add(c);
-  addCol(28.4,-19.2,.4);inter.push({kind:'elf',pos:new V3(28.4,0,-19.2),r:1.6});return c;})();
+// пасхалка: маленький тусклый кристалл на полу за видеостеной стенда «СтепьМаш»; с прохода его закрывают стена и трактор, на мини-карте его нет
+const elfStone=(function(){const c=new T.Mesh(new T.OctahedronGeometry(.11,0),new T.MeshStandardMaterial({color:'#7dffb0',emissive:'#2bd67b',emissiveIntensity:.6,roughness:.25}));
+  c.position.set(6.6,.2,-17.3);c.scale.y=1.5;c.castShadow=true;scene.add(c);inter.push({kind:'elf',pos:new V3(6.6,0,-17.3),r:1.3});return c;})();
 // квиз
 (function(){const g=new T.Group();g.position.set(-6,0,-5.2);scene.add(g);
   M(rbox(1.1,1.9,.5,.16),paint('#e8a01a'),g,0,.95,0);
@@ -641,23 +640,44 @@ function elfLoad(){if(!ELF.p)ELF.p=Promise.all([import('./vendor/jsm/GLTFLoader.
       if(m.transparent){m.transparent=false;m.alphaTest=.5;m.depthWrite=true;m.side=T.DoubleSide;}}); // волосы, брови, ресницы
     ELF.tpl=gl.scene;ELF.clone=su.clone;return ELF;}));
   return ELF.p;}
-// Анимации в модели нет: шаг собирается поворотом костей. Оси поворота пересчитываются из пространства модели в пространство кости,
-// руки сначала опускаются из позы «А» вдоль тела.
+// Анимации в модели нет: ходьба, бег и стойка собираются поворотом костей. Ось задаётся в пространстве модели
+// (x — вбок, y — вверх, z — вперёд) и пересчитывается в пространство кости; руки сначала опускаются из позы «А».
 function makeElf(){const g=new T.Group(),m=ELF.clone(ELF.tpl);g.add(m);m.updateMatrixWorld(true);
-  const X=new V3(1,0,0),down=new V3(0,-1,0),qw=new T.Quaternion(),tq=new T.Quaternion(),R={};
+  const down=new V3(0,-1,0),tq=new T.Quaternion(),R={};
   const bone=n=>m.getObjectByName(n)||m.getObjectByName(n.replace('.',''));
-  ['upperleg01.L','upperleg01.R','lowerleg01.L','lowerleg01.R','upperarm01.L','upperarm01.R','lowerarm01.L','lowerarm01.R'].forEach(n=>{const b=bone(n);if(!b)return;
-    b.getWorldQuaternion(qw);const base=b.quaternion.clone();
-    if(n.startsWith('upperarm')){const dir=new V3(0,1,0).applyQuaternion(qw),ax=dir.clone().cross(down);const ang=Math.acos(clamp(dir.dot(down),-1,1))-.12;
-      if(ax.lengthSq()>1e-6){ax.normalize().applyQuaternion(qw.clone().invert());const qd=new T.Quaternion().setFromAxisAngle(ax,ang);base.multiply(qd);qw.multiply(qd);}}
-    R[n.replace('.','')]={b,base,ax:X.clone().applyQuaternion(qw.clone().invert()).normalize(),cur:0};});
-  const set=(k,a)=>{const r=R[k];if(!r)return;r.cur+=(a-r.cur)*.3;r.b.quaternion.copy(r.base).multiply(tq.setFromAxisAngle(r.ax,r.cur));};
-  let ph=0;
-  g.userData.anim=(spd,dt)=>{ph+=dt*(spd>.05?spd*1.9:0);const a=spd>.05?Math.min(.75,.22+spd*.1):0,s=Math.sin(ph);
-    set('upperleg01L',-s*a);set('upperleg01R',s*a);
-    set('lowerleg01L',Math.max(0,-Math.sin(ph+.6))*a*1.3);set('lowerleg01R',Math.max(0,Math.sin(ph+.6))*a*1.3);
-    set('upperarm01L',s*a*.7);set('upperarm01R',-s*a*.7);set('lowerarm01L',-.2-a*.3);set('lowerarm01R',-.2-a*.3);
-    m.position.y=a?Math.abs(Math.cos(ph))*.035:0;};
+  ['root','spine04','spine02','neck01','upperleg01.L','upperleg01.R','lowerleg01.L','lowerleg01.R','foot.L','foot.R',
+   'upperarm01.L','upperarm01.R','lowerarm01.L','lowerarm01.R'].forEach((n,i)=>{
+    if(i===0){['upperarm01.L','upperarm01.R'].forEach(u=>{const b=bone(u);if(!b)return;const qw=b.getWorldQuaternion(new T.Quaternion());
+        const dir=new V3(0,1,0).applyQuaternion(qw),ax=dir.clone().cross(down),ang=Math.acos(clamp(dir.dot(down),-1,1))-.1;
+        if(ax.lengthSq()>1e-6)b.quaternion.multiply(new T.Quaternion().setFromAxisAngle(ax.normalize().applyQuaternion(qw.invert()),ang));});
+      m.updateMatrixWorld(true);
+      ['L','R'].forEach(sd=>{const u=bone('upperarm01.'+sd),l=bone('lowerarm01.'+sd);if(!u||!l)return; // в позе «А» локоть согнут почти на 60°: выпрямить
+        const ql=l.getWorldQuaternion(new T.Quaternion()),du=new V3(0,1,0).applyQuaternion(u.getWorldQuaternion(new T.Quaternion())),dl=new V3(0,1,0).applyQuaternion(ql);
+        const qa=new T.Quaternion().setFromUnitVectors(dl,du),inv=ql.clone().invert();l.quaternion.multiply(inv.multiply(qa).multiply(ql));});
+      m.updateMatrixWorld(true);} // сначала опустить и выпрямить руки, потом считать оси: иначе локоть гнётся вбок
+    const b=bone(n);if(!b)return;const qw=b.getWorldQuaternion(new T.Quaternion()),base=b.quaternion.clone();
+    const inv=qw.clone().invert(),L=v=>v.applyQuaternion(inv).normalize();
+    R[n.replace('.','')]={b,base,x:L(new V3(1,0,0)),y:L(new V3(0,1,0)),z:L(new V3(0,0,1)),c:[0,0,0]};});
+  // поворот кости: x — вперёд-назад, y — скручивание, z — наклон вбок; плавно догоняет цель
+  const set=(k,x,y,z,f)=>{const r=R[k];if(!r)return;r.c[0]+=(x-r.c[0])*f;r.c[1]+=((y||0)-r.c[1])*f;r.c[2]+=((z||0)-r.c[2])*f;
+    r.b.quaternion.copy(r.base).multiply(tq.setFromAxisAngle(r.x,r.c[0])).multiply(tq.setFromAxisAngle(r.y,r.c[1])).multiply(tq.setFromAxisAngle(r.z,r.c[2]));};
+  let ph=0,t=0,mv=0,run=0;
+  g.userData.anim=(spd,dt)=>{t+=dt;const f=1-Math.exp(-dt*14);
+    mv+=((spd>.3?1:0)-mv)*(1-Math.exp(-dt*8));run+=((clamp((spd-4.8)/3.7,0,1))-run)*(1-Math.exp(-dt*6));
+    ph+=dt*(3.2+spd*1.1)*(spd>.3?1:0);const s=Math.sin(ph),c=Math.cos(ph),w=mv;
+    const thigh=(.38+.32*run)*w,knee=(.55+.75*run)*w,elbow=.1+(.12+1.05*run)*w,arm=(.3+.35*run)*w;
+    const br=Math.sin(t*1.6)*(1-w); // дыхание и покачивание в стойке
+    // ноги: бедро вперёд-назад, колено сгибается, пока нога идёт вперёд, стопа выравнивается
+    set('upperleg01L',-s*thigh,0,0,f);set('upperleg01R',s*thigh,0,0,f);
+    const kL=(Math.max(0,c)*knee+.06*w),kR=(Math.max(0,-c)*knee+.06*w);
+    set('lowerleg01L',kL,0,0,f);set('lowerleg01R',kR,0,0,f);set('footL',-kL*.35+Math.min(0,-s)*.15*w,0,0,f);set('footR',-kR*.35+Math.min(0,s)*.15*w,0,0,f);
+    // руки против ног, локти согнуты, на бегу сильнее
+    set('upperarm01L',s*arm,0,.04+br*.015,f);set('upperarm01R',-s*arm,0,-.04-br*.015,f);
+    set('lowerarm01L',-elbow-Math.max(0,-s)*.25*run,0,0,f);set('lowerarm01R',-elbow-Math.max(0,s)*.25*run,0,0,f);
+    // корпус: таз поворачивается за ногами, плечи навстречу, на бегу наклон вперёд, голова держит взгляд
+    set('root',0,s*.12*w,c*.03*w,f);set('spine04',(.04+.16*run)*w+br*.012,-s*.08*w,0,f);set('spine02',br*.018,-s*.1*w,-c*.02*w,f);
+    set('neck01',-(.04+.12*run)*w,s*.06*w,0,f);
+    m.position.y=w*(.02+.045*run)*(Math.cos(2*ph)+1)/2-(.015+.03*run)*w;};
   g.userData.anim(0,0);return g;}
 async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&/[?&]elf\b/.test(location.search); // локальный предпросмотр модели
   try{if(!ok&&TRK.on&&window.supabase){const sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);const {data}=await sb.auth.getSession();
@@ -1185,7 +1205,7 @@ function tick(now){
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
   showSmoke.update(dt);burstSys.update(dt);
   bob.forEach((b,i)=>b.position.y=2.1+Math.sin(t*2+i)*.12);
-  elfStone.rotation.y=t*.8;elfStone.position.y=.95+Math.sin(t*1.7)*.06;
+  elfStone.rotation.y=t*.6;elfStone.material.emissiveIntensity=.45+Math.sin(t*2.3)*.3;
   vt+=dt;if(vt>1/30){drawVideo(t);vt=0;}
   // цель
   objT-=dt;if(objT<=0){objT=.4;objCache=objective();}
