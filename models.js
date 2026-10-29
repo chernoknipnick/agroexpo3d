@@ -362,6 +362,7 @@ AX.makeHuman=function(o){
   return g;
 };
 AX.walk=function(h,spd,dt){
+  if(h.userData.anim)return h.userData.anim(spd,dt); // своя анимация модели (эльф админа)
   const u=h.userData;u.phase+=dt*(spd>.05?spd*1.9:0);const a=spd>.05?Math.min(.75,.22+spd*.1):0;const s=Math.sin(u.phase);
   u.legs[0].th.rotation.x+=((s*a)-u.legs[0].th.rotation.x)*.3;u.legs[1].th.rotation.x+=((-s*a)-u.legs[1].th.rotation.x)*.3;
   u.legs[0].sh.rotation.x=Math.max(0,-Math.sin(u.phase+.6))*a*1.3;u.legs[1].sh.rotation.x=Math.max(0,Math.sin(u.phase+.6))*a*1.3;

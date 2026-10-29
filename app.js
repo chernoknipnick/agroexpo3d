@@ -160,7 +160,7 @@ function updateHUD(){
   $('#pDot').textContent=level();$('#pDot').style.background=S.color;
   $('#pBar').style.width=((S.points%120)/120*100)+'%';
   $('#qCount').textContent=QUESTS.filter(q=>q.done()).length+'/'+QUESTS.length;
-  if(W.ready){drawBoard();player.label.userData.draw(S.nick,'Ур. '+level());}
+  if(W.ready){drawBoard();player.label.userData.draw(S.nick,subLabel());}
 }
 
 /* ================= КЛАВИАТУРА ================= */
@@ -261,7 +261,7 @@ function sheetHelp(){
   <div class="eyebrow">Меню</div><div class="keys">${[K(['Q'],'квесты'),K(['R'],'рейтинг'),K(['T'],'навигация и телепорт'),K(['B'],'бонусы'),K(['F'],'моя ферма'),K(['G'],'дашборд'),K(['Z'],'реакции: эмодзи над головой'),K(['N'],'звук вкл/выкл'),K(['1','…','9'],'кнопки в открытой панели'),K(['Esc'],'закрыть')].join('')}</div>
   <div class="eyebrow">В поле</div><div class="keys">${[K(['W','S'],'газ, тормоз'),K(['A','D'],'руль'),K(['Space'],'опустить или поднять плуг'),K(['V'],'вид камеры'),K(['Enter'],'завершить вспашку')].join('')}</div>`);
 }
-const NAV={react:()=>toggleSheet('react',sheetReact),quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
+const NAV={admin:()=>open('admin.html','_blank'),react:()=>toggleSheet('react',sheetReact),quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
 document.querySelectorAll('#nav [data-open]').forEach(b=>b.onclick=()=>NAV[b.dataset.open]());
 
 /* ================= РЕГИСТРАЦИЯ ================= */
@@ -278,7 +278,7 @@ function openReg(step){
     <div><div class="eyebrow" style="margin-bottom:8px">Головной убор</div><div class="seg">${[['cap','Кепка'],['helmet','Каска'],['none','Без']].map(h=>`<button aria-pressed="${S.hat===h[0]}" data-h="${h[0]}">${h[1]}</button>`).join('')}</div><button class="btn ghost" id="rHat" data-key="H" style="margin-top:8px;padding:6px 10px">Следующий убор</button></div>`;
     $('#regFoot').innerHTML=`<span class="hint">Мышь не обязательна: цифры, <kbd>C</kbd>, <kbd>H</kbd>, <kbd>Enter</kbd></span><button class="btn" id="rNext" data-key="Enter">Дальше</button>`;
     const b=$('#regBody');
-    b.querySelector('#rNick').oninput=e=>{S.nick=e.target.value.trim()||GUEST;player.label.userData.draw(S.nick,'Ур. '+level());};
+    b.querySelector('#rNick').oninput=e=>{S.nick=e.target.value.trim()||GUEST;player.label.userData.draw(S.nick,subLabel());};
     b.querySelectorAll('[data-r]').forEach(x=>x.onclick=()=>{S.nick=$('#rNick').value.trim()||S.nick;S.role=+x.dataset.r;S.color=ROLES[S.role].color;S.hat=ROLES[S.role].hat;openReg(1);rebuildPlayer();});
     b.querySelectorAll('[data-c]').forEach(x=>x.onclick=()=>{S.color=x.dataset.c;openReg(1);rebuildPlayer();});
     b.querySelector('#rCol').onclick=()=>{S.color=SWATCH[(SWATCH.indexOf(S.color)+1)%SWATCH.length];openReg(1);rebuildPlayer();};
@@ -622,8 +622,43 @@ const beacon=new T.Group();scene.add(beacon);
 /* персонажи */
 const player={obj:null,label:null,pos:new V3(-24,0,0),rot:Math.PI/2,vy:0,y:0};
 function rebuildPlayer(){if(player.obj)scene.remove(player.obj);
-  player.obj=AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
-  if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,'Ур. '+level());$('#pDot').style.background=S.color;netTrack();}
+  player.obj=ME.admin&&ELF.tpl?makeElf():AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
+  if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,subLabel());$('#pDot').style.background=S.color;netTrack();}
+
+/* ================= АДМИН В ИГРЕ ================= */
+// Организатор, вошедший в admin.html в этом же браузере (общая сессия Supabase), ходит по выставке своим эльфом (models/elf.glb).
+// Админ — тот, кому журнал отдаёт строки: это разрешено только пользователям из таблицы admins.
+const ME={admin:false},ELF={tpl:null,clone:null,p:null};
+const subLabel=()=>ME.admin?'Админ':'Ур. '+level();
+function elfLoad(){if(!ELF.p)ELF.p=Promise.all([import('./vendor/jsm/GLTFLoader.js'),import('./vendor/jsm/SkeletonUtils.js')])
+  .then(([g,su])=>new Promise((res,rej)=>new g.GLTFLoader().load('models/elf.glb?v=1',res,undefined,rej)).then(gl=>{
+    gl.scene.traverse(o=>{if(!o.isMesh)return;o.castShadow=true;o.frustumCulled=false;const m=o.material;
+      if(m.transparent){m.transparent=false;m.alphaTest=.5;m.depthWrite=true;m.side=T.DoubleSide;}}); // волосы, брови, ресницы
+    ELF.tpl=gl.scene;ELF.clone=su.clone;return ELF;}));
+  return ELF.p;}
+// Анимации в модели нет: шаг собирается поворотом костей. Оси поворота пересчитываются из пространства модели в пространство кости,
+// руки сначала опускаются из позы «А» вдоль тела.
+function makeElf(){const g=new T.Group(),m=ELF.clone(ELF.tpl);g.add(m);m.updateMatrixWorld(true);
+  const X=new V3(1,0,0),down=new V3(0,-1,0),qw=new T.Quaternion(),tq=new T.Quaternion(),R={};
+  const bone=n=>m.getObjectByName(n)||m.getObjectByName(n.replace('.',''));
+  ['upperleg01.L','upperleg01.R','lowerleg01.L','lowerleg01.R','upperarm01.L','upperarm01.R','lowerarm01.L','lowerarm01.R'].forEach(n=>{const b=bone(n);if(!b)return;
+    b.getWorldQuaternion(qw);const base=b.quaternion.clone();
+    if(n.startsWith('upperarm')){const dir=new V3(0,1,0).applyQuaternion(qw),ax=dir.clone().cross(down);const ang=Math.acos(clamp(dir.dot(down),-1,1))-.12;
+      if(ax.lengthSq()>1e-6){ax.normalize().applyQuaternion(qw.clone().invert());const qd=new T.Quaternion().setFromAxisAngle(ax,ang);base.multiply(qd);qw.multiply(qd);}}
+    R[n.replace('.','')]={b,base,ax:X.clone().applyQuaternion(qw.clone().invert()).normalize(),cur:0};});
+  const set=(k,a)=>{const r=R[k];if(!r)return;r.cur+=(a-r.cur)*.3;r.b.quaternion.copy(r.base).multiply(tq.setFromAxisAngle(r.ax,r.cur));};
+  let ph=0;
+  g.userData.anim=(spd,dt)=>{ph+=dt*(spd>.05?spd*1.9:0);const a=spd>.05?Math.min(.75,.22+spd*.1):0,s=Math.sin(ph);
+    set('upperleg01L',-s*a);set('upperleg01R',s*a);
+    set('lowerleg01L',Math.max(0,-Math.sin(ph+.6))*a*1.3);set('lowerleg01R',Math.max(0,Math.sin(ph+.6))*a*1.3);
+    set('upperarm01L',s*a*.7);set('upperarm01R',-s*a*.7);set('lowerarm01L',-.2-a*.3);set('lowerarm01R',-.2-a*.3);
+    m.position.y=a?Math.abs(Math.cos(ph))*.035:0;};
+  g.userData.anim(0,0);return g;}
+async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&/[?&]elf\b/.test(location.search); // локальный предпросмотр модели
+  try{if(!ok&&TRK.on&&window.supabase){const sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);const {data}=await sb.auth.getSession();
+      if(data.session){const r=await sb.from('events').select('at').limit(1);ok=!!(r.data&&r.data.length);}}
+    if(!ok)return;await elfLoad();}catch(e){console.warn('Админ-модель не загрузилась',e);return;}
+  ME.admin=true;rebuildPlayer();netTrack(true);$('#navAdmin').hidden=false;toast('Вы на выставке как <b>администратор</b>');}
 /* ================= ОДНОВРЕМЕННАЯ ИГРА ================= */
 // Supabase Realtime: присутствие (кто сейчас на выставке) и трансляция координат. Работает, если в config.js задан проект.
 const NET={ch:null,on:false,peers:new Map(),synced:false,sent:{x:0,z:0,r:0,w:'',t:0},trT:0};
@@ -638,13 +673,14 @@ function netInit(){if(!TRK.on||!window.supabase)return;
     .subscribe(st=>{NET.on=st==='SUBSCRIBED';if(NET.on){NET.sent.t=0;netTrack(true);}});
   setInterval(netSend,160);}
 function netTrack(now){if(!NET.on||!S.registered)return;clearTimeout(NET.trT);
-  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level()}),now?0:600);}
+  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level(),a:ME.admin?1:0}),now?0:600);}
 function netSync(){const st=NET.ch.presenceState(),seen=new Set();
   for(const k in st){const m=st[k][0];if(k===S.vid||!m)continue;seen.add(k);let p=NET.peers.get(k);
     if(!p){p={cur:new V3(),tgt:new V3(),rot:0,trot:0,w:'hall',seen:false,look:'',a:null,l:makeLabel(2.4)};scene.add(p.l);NET.peers.set(k,p);}
-    const look=m.c+'|'+m.h;
-    if(p.look!==look){if(p.a)scene.remove(p.a);p.a=AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
-    p.l.userData.draw(m.n,'Ур. '+m.lv);p.c=m.c;}
+    if(m.a&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{}); // админ ходит эльфом: модель грузится один раз
+    const look=m.a&&ELF.tpl?'elf':m.c+'|'+m.h;
+    if(p.look!==look){if(p.a)scene.remove(p.a);p.a=look==='elf'?makeElf():AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
+    p.l.userData.draw(m.n,m.a?'Админ':'Ур. '+m.lv);p.c=m.c;}
   NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);if(p.bub)scene.remove(p.bub);NET.peers.delete(k);}});
   NET.synced=true;$('#pOnline').hidden=false;$('#pOnline').textContent='Сейчас на выставке: '+(NET.peers.size+1);}
 function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),w=$('#drive').hidden?'hall':'field',s=NET.sent;
@@ -1166,7 +1202,7 @@ function tick(now){
 }
 
 function start(){
-  W.ready=true;rebuildPlayer();netInit();leadersFetch();if(TRK.on)setInterval(leadersFetch,30000);drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
+  W.ready=true;rebuildPlayer();netInit();adminInit();leadersFetch();if(TRK.on)setInterval(leadersFetch,30000);drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
   $('#loading').remove();
   if(S.registered){closeReg();updateHUD();}else{openReg(1);updateHUD();}
   if(location.hash==='#dashboard')openDash();
