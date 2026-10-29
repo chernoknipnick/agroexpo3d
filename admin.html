@@ -107,8 +107,9 @@ tr.v.open td{background:var(--field-2)}
     </header>
 
     <div class="card" id="noRights" hidden style="margin-bottom:12px;border-color:var(--danger)"><h3 style="color:var(--danger)">Нет прав админа</h3>
-      <p style="margin:0 0 8px">Вы вошли как <b id="noRightsEmail"></b>, но этого пользователя нет в таблице <code>admins</code>, поэтому журнал не читается и в игре вы не эльф. Выполните в Supabase → SQL Editor и обновите страницу:</p>
-      <pre style="margin:0;background:var(--tint);padding:10px;border-radius:8px;overflow:auto">insert into public.admins (uid) select id from auth.users on conflict do nothing;</pre></div>
+      <p style="margin:0 0 8px">Вы вошли как <b id="noRightsEmail"></b>, но журнал не читается, поэтому и в игре вы не эльф. Либо этого пользователя нет в таблице <code>admins</code>, либо в базе не применено исправление <code>supabase-3-admin-fix.sql</code>. Выполните в Supabase → SQL Editor оба шага и обновите страницу:</p>
+      <pre style="margin:0;background:var(--tint);padding:10px;border-radius:8px;overflow:auto">insert into public.admins (uid) select id from auth.users on conflict do nothing;
+-- и весь файл supabase-3-admin-fix.sql из репозитория</pre></div>
     <div class="card" style="margin-bottom:12px"><h3>Сейчас на выставке</h3><div class="online" id="online"><span class="muted" style="background:none;padding:0">подключаюсь…</span></div></div>
     <div class="grid kpis" id="kpis"></div>
     <div class="grid two">

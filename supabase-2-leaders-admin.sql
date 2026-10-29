@@ -23,8 +23,16 @@ grant execute on function public.leaders_today() to anon, authenticated;
 create table if not exists public.admins (uid uuid primary key references auth.users (id) on delete cascade);
 alter table public.admins enable row level security;
 drop policy if exists "admins read events" on public.events;
+-- проверка через функцию с правами владельца: сама таблица admins закрыта RLS и изнутри правила не видна
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.admins where uid = auth.uid());
+$$;
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
 create policy "admins read events" on public.events for select to authenticated
-  using (exists (select 1 from public.admins a where a.uid = auth.uid()));
+  using (public.is_admin());
 grant select on public.events to authenticated;
 grant select on public.visitors to authenticated;
 
