@@ -106,6 +106,9 @@ tr.v.open td{background:var(--field-2)}
       </div>
     </header>
 
+    <div class="card" id="noRights" hidden style="margin-bottom:12px;border-color:var(--danger)"><h3 style="color:var(--danger)">Нет прав админа</h3>
+      <p style="margin:0 0 8px">Вы вошли как <b id="noRightsEmail"></b>, но этого пользователя нет в таблице <code>admins</code>, поэтому журнал не читается и в игре вы не эльф. Выполните в Supabase → SQL Editor и обновите страницу:</p>
+      <pre style="margin:0;background:var(--tint);padding:10px;border-radius:8px;overflow:auto">insert into public.admins (uid) select id from auth.users on conflict do nothing;</pre></div>
     <div class="card" style="margin-bottom:12px"><h3>Сейчас на выставке</h3><div class="online" id="online"><span class="muted" style="background:none;padding:0">подключаюсь…</span></div></div>
     <div class="grid kpis" id="kpis"></div>
     <div class="grid two">
@@ -150,7 +153,8 @@ async function load(){
     if(error){$('#foot').textContent='Ошибка загрузки: '+error.message;return;}all.push(...data);if(data.length<1000)break;}
   rows=all;render();
   $('#foot').textContent='Записей за период: '+fmt(rows.length)+' · обновлено '+new Date().toLocaleTimeString('ru-RU');
-  if(!rows.length&&!(await sb.from('events').select('at').limit(1)).data?.length)$('#foot').textContent+=' · журнал пуст или у этого пользователя нет прав (выполнен ли supabase-2-leaders-admin.sql?)';}
+  if(!rows.length&&!(await sb.from('events').select('at').limit(1)).data?.length){const {data:u}=await sb.auth.getUser();
+    $('#noRights').hidden=false;$('#noRightsEmail').textContent=u.user?u.user.email:'';}}
 
 function byVisitor(){const m=new Map();
   rows.forEach(r=>{let v=m.get(r.visitor);if(!v){v={id:r.visitor,nick:r.nick,role:r.role,region:r.region,farm:r.farm,points:0,level:1,sessions:new Set(),n:0,first:r.at,last:r.at,ev:[]};m.set(r.visitor,v);}

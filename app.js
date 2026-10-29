@@ -681,8 +681,10 @@ function makeElf(){const g=new T.Group(),m=ELF.clone(ELF.tpl);g.add(m);m.updateM
   g.userData.anim(0,0);return g;}
 async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&/[?&]elf\b/.test(location.search); // локальный предпросмотр модели
   try{if(!ok&&TRK.on&&window.supabase){const sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);const {data}=await sb.auth.getSession();
-      if(data.session){const r=await sb.from('events').select('at').limit(1);ok=!!(r.data&&r.data.length);}}
-    if(!ok)return;await elfLoad();}catch(e){console.warn('Админ-модель не загрузилась',e);return;}
+      if(data.session){const r=await sb.from('events').select('at').limit(1);ok=!!(r.data&&r.data.length);
+        if(!ok){console.warn('Вход есть, но журнал не читается',data.session.user.email,r.error);
+          toast('Вы вошли как <b>'+esc(data.session.user.email||'')+'</b>, но у этого пользователя нет прав админа. Добавьте его в таблицу admins (SQL в инструкции)');return;}}}
+    if(!ok)return;await elfLoad();}catch(e){console.warn('Админ-модель не загрузилась',e);toast('Модель админа не загрузилась, обновите страницу');return;}
   ME.admin=true;rebuildPlayer();netTrack(true);$('#navAdmin').hidden=false;toast('Вы на выставке как <b>администратор</b>');}
 function elfToggle(){S.elf=!S.elf;save();
   if(!S.elf){rebuildPlayer();burst();toast('Вы снова человек');return;}
