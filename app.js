@@ -148,7 +148,8 @@ const ACH=[
   {id:'a_plow',n:'Пахарь',m:'П',done:()=>S.plow&&S.plow.cov>=90},
   {id:'a_quiz',n:'Знаток',m:'?',done:()=>QUIZ.every((q,i)=>S.quiz[i]===1)},
   {id:'a_insp',n:'Инженер',m:'⚙',done:()=>Object.keys(EXPO).every(k=>S.awards['inspect_'+k])},
-  {id:'a_mech',n:'Механизатор года',m:'★',done:()=>QUESTS.every(q=>q.done())}
+  {id:'a_mech',n:'Механизатор года',m:'★',done:()=>QUESTS.every(q=>q.done())},
+  {id:'a_elf',n:'Тайный эльф',m:'Э',done:()=>!!S.awards.elf_found}
 ];
 function checkQuests(){
   QUESTS.forEach(q=>{if(q.done()&&!S.awards[q.id]){S.awards[q.id]=1;setTimeout(()=>{S.awards[q.id]=0;award(q.id,q.p,'Квест выполнен: '+q.n);},450);}});
@@ -583,6 +584,10 @@ STANDS.forEach(buildStand);
   const l=makeLabel(3.2,{bg:'rgba(109,75,47,.95)'});l.userData.draw('Кофе-поинт','+5');l.position.set(0,2.6,0);g.add(l);
   const b=AX.makeHuman({shirt:'#222',pants:'#222',skin:'#e9c3a0',hat:'cap',hatColor:'#6d4b2f'});b.position.set(0,0,-1.0);g.add(b);
   [-1.6,0,1.6].forEach(x=>addCol(-24+x,-16.5,.8));inter.push({kind:'coffee',pos:new V3(-24,0,-15.2),r:2.2});})();
+// пасхалка: в дальнем углу за растением кристалл, который превращает посетителя в эльфа (на мини-карте его нет)
+const elfStone=(function(){const g=new T.Group();g.position.set(28.4,0,-19.2);scene.add(g);cyl(.26,.32,.7,16,std('#d9ddd5',.1,.6),g,0,.35,0);
+  const c=new T.Mesh(new T.OctahedronGeometry(.22,0),new T.MeshStandardMaterial({color:'#7dffb0',emissive:'#2bd67b',emissiveIntensity:1.6,roughness:.2}));c.position.y=.95;c.castShadow=true;g.add(c);
+  addCol(28.4,-19.2,.4);inter.push({kind:'elf',pos:new V3(28.4,0,-19.2),r:1.6});return c;})();
 // квиз
 (function(){const g=new T.Group();g.position.set(-6,0,-5.2);scene.add(g);
   M(rbox(1.1,1.9,.5,.16),paint('#e8a01a'),g,0,.95,0);
@@ -622,7 +627,7 @@ const beacon=new T.Group();scene.add(beacon);
 /* персонажи */
 const player={obj:null,label:null,pos:new V3(-24,0,0),rot:Math.PI/2,vy:0,y:0};
 function rebuildPlayer(){if(player.obj)scene.remove(player.obj);
-  player.obj=ME.admin&&ELF.tpl?makeElf():AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
+  player.obj=(ME.admin||S.elf)&&ELF.tpl?makeElf():AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
   if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,subLabel());$('#pDot').style.background=S.color;netTrack();}
 
 /* ================= АДМИН В ИГРЕ ================= */
@@ -659,6 +664,11 @@ async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hos
       if(data.session){const r=await sb.from('events').select('at').limit(1);ok=!!(r.data&&r.data.length);}}
     if(!ok)return;await elfLoad();}catch(e){console.warn('Админ-модель не загрузилась',e);return;}
   ME.admin=true;rebuildPlayer();netTrack(true);$('#navAdmin').hidden=false;toast('Вы на выставке как <b>администратор</b>');}
+function elfToggle(){S.elf=!S.elf;save();
+  if(!S.elf){rebuildPlayer();burst();toast('Вы снова человек');return;}
+  elfLoad().then(()=>{rebuildPlayer();burst();sfx.lvl();toast('Вы превратились в <b>эльфа</b>. Коснитесь кристалла ещё раз, чтобы вернуться');
+    if(!S.awards.elf_found){S.awards.elf_found=1;logEvent('Пасхалка: превращение в эльфа');save();checkQuests();}})
+    .catch(()=>{S.elf=false;save();toast('Кристалл молчит: модель не загрузилась');});}
 /* ================= ОДНОВРЕМЕННАЯ ИГРА ================= */
 // Supabase Realtime: присутствие (кто сейчас на выставке) и трансляция координат. Работает, если в config.js задан проект.
 const NET={ch:null,on:false,peers:new Map(),synced:false,sent:{x:0,z:0,r:0,w:'',t:0},trT:0};
@@ -673,12 +683,12 @@ function netInit(){if(!TRK.on||!window.supabase)return;
     .subscribe(st=>{NET.on=st==='SUBSCRIBED';if(NET.on){NET.sent.t=0;netTrack(true);}});
   setInterval(netSend,160);}
 function netTrack(now){if(!NET.on||!S.registered)return;clearTimeout(NET.trT);
-  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level(),a:ME.admin?1:0}),now?0:600);}
+  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level(),a:ME.admin?1:0,e:S.elf?1:0}),now?0:600);}
 function netSync(){const st=NET.ch.presenceState(),seen=new Set();
   for(const k in st){const m=st[k][0];if(k===S.vid||!m)continue;seen.add(k);let p=NET.peers.get(k);
     if(!p){p={cur:new V3(),tgt:new V3(),rot:0,trot:0,w:'hall',seen:false,look:'',a:null,l:makeLabel(2.4)};scene.add(p.l);NET.peers.set(k,p);}
-    if(m.a&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{}); // админ ходит эльфом: модель грузится один раз
-    const look=m.a&&ELF.tpl?'elf':m.c+'|'+m.h;
+    if((m.a||m.e)&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{}); // админ ходит эльфом: модель грузится один раз
+    const look=(m.a||m.e)&&ELF.tpl?'elf':m.c+'|'+m.h;
     if(p.look!==look){if(p.a)scene.remove(p.a);p.a=look==='elf'?makeElf():AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
     p.l.userData.draw(m.n,m.a?'Админ':'Ур. '+m.lv);p.c=m.c;}
   NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);if(p.bub)scene.remove(p.bub);NET.peers.delete(k);}});
@@ -1098,6 +1108,7 @@ function doInter(it){
   else if(it.kind==='desk')sheetFarm();else if(it.kind==='gate')openDrive();else if(it.kind==='quiz')sheetQuiz();
   else if(it.kind==='coffee'){if(!award('coffee_'+new Date().toLocaleDateString('sv'),5,'Кофе за счёт выставки'))toast('Ещё чашку? Баллы за кофе — один раз в день');}
   else if(it.kind==='free')toast('Это место для нового экспонента. В рабочей версии — <b>бронь стенда</b> из личного кабинета');
+  else if(it.kind==='elf')elfToggle();
   else if(it.kind==='book'){if(award('book_'+it.stand.id,15,'Буклет '+it.stand.brand))it.tag.visible=false;else toast('Буклет этого стенда уже у вас');}
   curInter=null;
 }
@@ -1108,6 +1119,7 @@ function promptFor(it){
   if(it.kind==='desk')return ['Стойка регистрации','Данные хозяйства и поле со спутника','Моя ферма'];
   if(it.kind==='gate')return ['Выход в поле','Сезон или вспашка на вашем поле','В поле'];
   if(it.kind==='quiz')return ['Агро-квиз',Object.keys(S.quiz).length+' из '+QUIZ.length+' вопросов · +10 за верный','Играть'];
+  if(it.kind==='elf')return S.elf?['Эльфийский кристалл','Вернуть человеческий облик','Коснуться']:['Странный кристалл','Тёплый и тихо гудит','Коснуться'];
   if(it.kind==='coffee')return ['Кофе-поинт','Как на офлайн-выставке, только без очереди','Взять кофе'];
   if(it.kind==='free')return ['Свободное место','Здесь может стоять ваш стенд','Подробнее'];
   if(it.kind==='book')return S.awards['book_'+it.stand.id]?['Буклет '+it.stand.brand,'уже собран','Открыть']:['Буклет '+it.stand.brand,'+15 баллов','Собрать'];
@@ -1173,6 +1185,7 @@ function tick(now){
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
   showSmoke.update(dt);burstSys.update(dt);
   bob.forEach((b,i)=>b.position.y=2.1+Math.sin(t*2+i)*.12);
+  elfStone.rotation.y=t*.8;elfStone.position.y=.95+Math.sin(t*1.7)*.06;
   vt+=dt;if(vt>1/30){drawVideo(t);vt=0;}
   // цель
   objT-=dt;if(objT<=0){objT=.4;objCache=objective();}
@@ -1202,7 +1215,7 @@ function tick(now){
 }
 
 function start(){
-  W.ready=true;rebuildPlayer();netInit();adminInit();leadersFetch();if(TRK.on)setInterval(leadersFetch,30000);drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
+  W.ready=true;rebuildPlayer();netInit();adminInit();if(S.elf)elfLoad().then(rebuildPlayer).catch(()=>{});leadersFetch();if(TRK.on)setInterval(leadersFetch,30000);drawBoard();drawVideo(0);resize();camera.position.set(-18,3,0);
   $('#loading').remove();
   if(S.registered){closeReg();updateHUD();}else{openReg(1);updateHUD();}
   if(location.hash==='#dashboard')openDash();
