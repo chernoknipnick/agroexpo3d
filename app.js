@@ -638,11 +638,11 @@ const beacon=new T.Group();scene.add(beacon);
 /* персонажи */
 const player={obj:null,label:null,pos:new V3(-24,0,0),rot:Math.PI/2,vy:0,y:0};
 function rebuildPlayer(){if(player.obj)scene.remove(player.obj);
-  player.obj=S.tree?makeTreeSkin():(ME.admin||S.elf)&&ELF.tpl?makeElf():AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
+  player.obj=S.tree?makeTreeSkin():S.elf&&ELF.tpl?makeElf():ME.admin?makeDevilSkin():AX.makeHuman({shirt:S.color,hat:S.hat,hatColor:S.hat==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});player.obj.position.copy(player.pos);player.obj.rotation.y=player.rot;scene.add(player.obj);
   if(!player.label){player.label=makeLabel(2.6);scene.add(player.label);}player.label.userData.draw(S.nick,subLabel());$('#pDot').style.background=S.color;netTrack();}
 
 /* ================= АДМИН В ИГРЕ ================= */
-// Организатор, вошедший в admin.html в этом же браузере (общая сессия Supabase), ходит по выставке своим эльфом (models/elf.glb).
+// Организатор, вошедший в admin.html в этом же браузере (общая сессия Supabase), получает скин чёрта.
 // Админ — тот, кому журнал отдаёт строки: это разрешено только пользователям из таблицы admins.
 const ME={admin:false},ELF={tpl:null,clone:null,p:null};
 const subLabel=()=>ME.admin?'Админ':'Ур. '+level();
@@ -691,13 +691,37 @@ function makeElf(){const g=new T.Group(),m=ELF.clone(ELF.tpl);g.add(m);m.updateM
     set('neck01',-(.04+.12*run)*w,s*.06*w,0,f);
     m.position.y=w*(.02+.045*run)*(Math.cos(2*ph)+1)/2-(.015+.03*run)*w;};
   g.userData.anim(0,0);return g;}
-async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&/[?&]elf\b/.test(location.search); // локальный предпросмотр модели
+function makeDevilSkin(){const avatar=new T.Group(),body=AX.makeHuman({shirt:'#aa2926',skin:'#bd3931',pants:'#29212a',shoes:'#17151c',hair:'#241820',hat:'none'});avatar.add(body);
+  const hornMaterial=new T.MeshStandardMaterial({color:'#25202a',roughness:.48}),redMaterial=new T.MeshStandardMaterial({color:'#b8292a',roughness:.6});
+  const goldMaterial=new T.MeshStandardMaterial({color:'#d8a540',metalness:.65,roughness:.32});
+  function part(geometry,material,parent,x,y,z){const mesh=new T.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=true;parent.add(mesh);return mesh;}
+  for(const side of [-1,1]){const horn=new T.Group();horn.position.set(side*.09,.07,0);body.userData.head.add(horn);
+    const lower=part(new T.ConeGeometry(.058,.22,12),hornMaterial,horn,side*.04,.09,-.015);lower.rotation.z=-side*.5;
+    const upper=part(new T.ConeGeometry(.033,.19,12),hornMaterial,horn,side*.075,.24,-.015);upper.rotation.z=side*.2;
+    const ear=part(new T.ConeGeometry(.045,.15,10),redMaterial,body.userData.head,side*.16,0,-.015);ear.rotation.z=-side*Math.PI/2;
+    const eye=part(new T.SphereGeometry(.02,12,8),new T.MeshStandardMaterial({color:'#ffcf50',emissive:'#ff8500',emissiveIntensity:.7}),body.userData.head,side*.042,.02,.124);eye.scale.y=.6;
+    const brow=part(new T.BoxGeometry(.065,.014,.018),hornMaterial,body.userData.head,side*.043,.058,.126);brow.rotation.z=side*.3;}
+  body.userData.legs.forEach(leg=>{for(const side of [-1,1])part(new T.BoxGeometry(.055,.11,.15),hornMaterial,leg.sh,side*.034,-.47,.14);});
+  const tail=new T.Group();tail.position.set(0,-.04,-.1);body.userData.hips.add(tail);
+  const curve=new T.CatmullRomCurve3([new T.Vector3(0,0,0),new T.Vector3(.08,-.2,-.25),new T.Vector3(.27,-.27,-.5),new T.Vector3(.33,-.1,-.72),new T.Vector3(.27,.05,-.78)]);
+  part(new T.TubeGeometry(curve,24,.026,8,false),redMaterial,tail,0,0,0);
+  const tip=new T.Shape();tip.moveTo(0,.14);tip.lineTo(-.09,-.08);tip.lineTo(0,-.04);tip.lineTo(.09,-.08);tip.closePath();
+  const arrow=part(new T.ExtrudeGeometry(tip,{depth:.035,bevelEnabled:false}),redMaterial,tail,.27,.1,-.78);arrow.rotation.z=.2;
+  const beard=part(new T.ConeGeometry(.035,.1,10),hornMaterial,body.userData.head,0,-.14,.065);beard.rotation.z=Math.PI;
+  const trident=new T.Group();trident.position.set(.025,-.27,.16);body.userData.arms[1].fo.add(trident);
+  part(new T.CylinderGeometry(.015,.015,1.12,8),goldMaterial,trident,0,.35,0);
+  part(new T.BoxGeometry(.25,.035,.035),goldMaterial,trident,0,.86,0);
+  for(const side of [-1,0,1]){part(new T.CylinderGeometry(.013,.013,side===0?.27:.2,8),goldMaterial,trident,side*.11,.96,0);
+    part(new T.ConeGeometry(.034,.1,8),goldMaterial,trident,side*.11,side===0?1.14:1.1,0);}
+  let phase=0;avatar.userData.anim=(speed,delta)=>{AX.walk(body,speed,delta);phase+=delta*(speed>.05?speed*1.5:1.3);tail.rotation.y=Math.sin(phase)*.25;tail.rotation.x=Math.cos(phase*.7)*.08;};
+  avatar.userData.anim(0,0);return avatar;}
+async function adminInit(){let ok=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&/[?&](?:elf|devil)\b/.test(location.search); // локальный предпросмотр модели
   try{if(!ok&&TRK.on&&window.supabase){const sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);const {data}=await sb.auth.getSession();
       if(data.session){const r=await sb.from('events').select('at').limit(1);ok=!!(r.data&&r.data.length);
         if(!ok){console.warn('Вход есть, но журнал не читается',data.session.user.email,r.error);
           toast('Вы вошли как <b>'+esc(data.session.user.email||'')+'</b>, но у этого пользователя нет прав админа. Добавьте его в таблицу admins (SQL в инструкции)');return;}}}
-    if(!ok)return;await elfLoad();}catch(e){console.warn('Админ-модель не загрузилась',e);toast('Модель админа не загрузилась, обновите страницу');return;}
-  ME.admin=true;rebuildPlayer();netTrack(true);$('#navAdmin').hidden=false;toast('Вы на выставке как <b>администратор</b>');}
+    if(!ok)return;}catch(e){console.warn('Не удалось проверить вход администратора',e);toast('Не удалось проверить вход администратора, обновите страницу');return;}
+  ME.admin=true;S.elf=false;S.tree=false;save();rebuildPlayer();netTrack(true);$('#navAdmin').hidden=false;toast('Вы на выставке как <b>администратор</b> · скин чёрта');}
 function makeTreeSkin(){const avatar=new T.Group(),crown=new T.Group();avatar.add(crown);
   const bark=new T.MeshStandardMaterial({color:'#60402d',roughness:.9}),gold=new T.MeshStandardMaterial({color:'#f4c44e',metalness:.55,roughness:.3});
   const trunk=new T.Mesh(new T.CylinderGeometry(.12,.15,.6,10),bark);trunk.position.y=.45;crown.add(trunk);
@@ -741,9 +765,9 @@ function netTrack(now){if(!NET.on||!S.registered)return;clearTimeout(NET.trT);
 function netSync(){const st=NET.ch.presenceState(),seen=new Set();
   for(const k in st){const m=st[k][0];if(k===S.vid||!m)continue;seen.add(k);let p=NET.peers.get(k);
     if(!p){p={cur:new V3(),tgt:new V3(),rot:0,trot:0,w:'hall',seen:false,look:'',a:null,l:makeLabel(2.4)};scene.add(p.l);NET.peers.set(k,p);}
-    if(!m.tree&&(m.a||m.e)&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{}); // админ ходит эльфом: модель грузится один раз
-    const look=m.tree?'tree':(m.a||m.e)&&ELF.tpl?'elf':m.c+'|'+m.h;
-    if(p.look!==look){if(p.a)scene.remove(p.a);p.a=look==='tree'?makeTreeSkin():look==='elf'?makeElf():AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
+    if(!m.tree&&m.e&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{});
+    const look=m.tree?'tree':m.e&&ELF.tpl?'elf':m.a?'devil':m.c+'|'+m.h;
+    if(p.look!==look){if(p.a)scene.remove(p.a);p.a=look==='tree'?makeTreeSkin():look==='elf'?makeElf():look==='devil'?makeDevilSkin():AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
     p.l.userData.draw(m.n,m.a?'Админ':'Ур. '+m.lv);p.c=m.c;}
   NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);if(p.bub)scene.remove(p.bub);NET.peers.delete(k);}});
   NET.synced=true;$('#pOnline').hidden=false;$('#pOnline').textContent='Сейчас на выставке: '+(NET.peers.size+1);}
