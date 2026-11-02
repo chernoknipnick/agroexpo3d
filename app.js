@@ -265,7 +265,7 @@ function sheetHelp(){
 }
 const NAV={admin:()=>open('admin.html','_blank'),react:()=>toggleSheet('react',sheetReact),quests:()=>toggleSheet('quests',sheetQuests),leaders:()=>toggleSheet('leaders',()=>{sheetLeaders();leadersFetch();}),teleport:()=>toggleSheet('teleport',sheetTeleport),bonuses:()=>toggleSheet('bonuses',sheetBonuses),farm:()=>toggleSheet('farm',sheetFarm),dash:()=>openDash(),help:()=>toggleSheet('help',sheetHelp)};
 NAV.race=()=>{closeSheet();if(INS.id)stopInspect();for(const key in keys)keys[key]=false;setWorldHud(false);RACE.open();};
-document.querySelectorAll('#nav [data-open]').forEach(b=>b.onclick=()=>NAV[b.dataset.open]());
+document.querySelectorAll('#nav [data-open]').forEach(b=>b.onclick=()=>{if(!ME.dead)NAV[b.dataset.open]();});
 
 /* ================= РЕГИСТРАЦИЯ ================= */
 let regStep=1;
@@ -644,8 +644,8 @@ function rebuildPlayer(){if(player.obj)scene.remove(player.obj);
 /* ================= АДМИН В ИГРЕ ================= */
 // Организатор, вошедший в admin.html в этом же браузере (общая сессия Supabase), получает скин чёрта.
 // Админ — тот, кому журнал отдаёт строки: это разрешено только пользователям из таблицы admins.
-const ME={admin:false},ELF={tpl:null,clone:null,p:null};
-const subLabel=()=>ME.admin?'Админ':'Ур. '+level();
+const ME={admin:false,dead:false,reviveAt:0,hits:new Map()},ELF={tpl:null,clone:null,p:null};
+const subLabel=()=>ME.dead?'Возрождение…':ME.admin?'Админ':'Ур. '+level();
 function elfLoad(){if(!ELF.p)ELF.p=Promise.all([import('./vendor/jsm/GLTFLoader.js'),import('./vendor/jsm/SkeletonUtils.js')])
   .then(([g,su])=>new Promise((res,rej)=>new g.GLTFLoader().load('models/elf.glb?v=1',res,undefined,rej)).then(gl=>{
     gl.scene.traverse(o=>{if(!o.isMesh)return;o.castShadow=true;o.frustumCulled=false;const m=o.material;
@@ -754,6 +754,10 @@ function netInit(){if(!TRK.on||!window.supabase)return;
   let sb;try{sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:false,autoRefreshToken:false}});}catch(e){return;}
   const ch=sb.channel('expo',{config:{broadcast:{self:false},presence:{key:S.vid}}});NET.ch=ch;
   ch.on('presence',{event:'sync'},netSync)
+    .on('broadcast',{event:'devil-touch'},({payload:message})=>{
+      if(!message||message.to!==S.vid||ME.dead||camMode!=='follow'||blocked())return;
+      const attacker=NET.peers.get(message.from);if(!attacker||!attacker.devil||attacker.dead||!attacker.seen||attacker.w!=='hall')return;
+      if(PavilionPhysics.touching({position:player.pos,radius:playerRadius(),y:player.y},{position:attacker.cur,radius:attacker.radius,y:attacker.cur.y},.5))knockoutPlayer();})
     .on('presence',{event:'join'},({key,newPresences})=>{const m=newPresences[0];if(NET.synced&&key!==S.vid&&!NET.peers.has(key)&&m)toast('<b>'+esc(m.n)+'</b> зашёл на выставку');})
     .on('broadcast',{event:'r'},({payload:m})=>{const p=NET.peers.get(m.i);if(p&&REACT[m.e])say(p,m.e);})
     .on('broadcast',{event:'p'},({payload:m})=>{const p=NET.peers.get(m.i);if(!p)return;p.tgt.set(m.x,m.y||0,m.z);p.trot=m.r;p.w=m.w;
@@ -761,14 +765,15 @@ function netInit(){if(!TRK.on||!window.supabase)return;
     .subscribe(st=>{NET.on=st==='SUBSCRIBED';if(NET.on){NET.sent.t=0;netTrack(true);}});
   setInterval(netSend,160);}
 function netTrack(now){if(!NET.on||!S.registered)return;clearTimeout(NET.trT);
-  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level(),a:ME.admin?1:0,e:S.elf?1:0,tree:S.tree?1:0}),now?0:600);}
+  NET.trT=setTimeout(()=>NET.ch.track({n:S.nick,c:S.color,h:S.hat,lv:level(),a:ME.admin?1:0,e:S.elf?1:0,tree:S.tree?1:0,dead:ME.dead?1:0}),now?0:600);}
 function netSync(){const st=NET.ch.presenceState(),seen=new Set();
   for(const k in st){const m=st[k][0];if(k===S.vid||!m)continue;seen.add(k);let p=NET.peers.get(k);
     if(!p){p={cur:new V3(),tgt:new V3(),rot:0,trot:0,w:'hall',seen:false,look:'',a:null,l:makeLabel(2.4)};scene.add(p.l);NET.peers.set(k,p);}
     if(!m.tree&&m.e&&!ELF.tpl)elfLoad().then(()=>NET.ch&&netSync()).catch(()=>{});
     const look=m.tree?'tree':m.e&&ELF.tpl?'elf':m.a?'devil':m.c+'|'+m.h;
     if(p.look!==look){if(p.a)scene.remove(p.a);p.a=look==='tree'?makeTreeSkin():look==='elf'?makeElf():look==='devil'?makeDevilSkin():AX.makeHuman({shirt:m.c,hat:m.h,hatColor:m.h==='cap'?'#f2f0e8':undefined,pants:'#2d3a4a'});scene.add(p.a);p.look=look;}
-    p.l.userData.draw(m.n,m.a?'Админ':'Ур. '+m.lv);p.c=m.c;}
+    p.dead=!!m.dead;p.devil=look==='devil';p.radius=look==='tree'?.62:.35;
+    p.l.userData.draw(m.n,p.dead?'Возрождение…':m.a?'Админ':'Ур. '+m.lv);p.c=m.c;}
   NET.peers.forEach((p,k)=>{if(!seen.has(k)){scene.remove(p.a,p.l);if(p.bub)scene.remove(p.bub);NET.peers.delete(k);}});
   NET.synced=true;$('#pOnline').hidden=false;$('#pOnline').textContent='Сейчас на выставке: '+(NET.peers.size+1);}
 function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),w=RACE.active?'race':$('#drive').hidden?'hall':'field',s=NET.sent;
@@ -777,7 +782,7 @@ function netSend(){if(!NET.on||!S.registered)return;const now=performance.now(),
   NET.ch.send({type:'broadcast',event:'p',payload:{i:S.vid,x:+player.pos.x.toFixed(2),z:+player.pos.z.toFixed(2),y:+player.y.toFixed(2),r:+player.rot.toFixed(2),w}});}
 function netUpdate(dt){NET.peers.forEach(p=>{if(!p.a)return;const vis=p.seen&&p.w!=='field'&&p.w!=='race';p.a.visible=p.l.visible=vis;if(!vis){if(p.bub)p.bub.visible=false;return;}
   const px=p.cur.x,pz=p.cur.z;p.cur.lerp(p.tgt,1-Math.pow(.0005,dt));const spd=Math.hypot(p.cur.x-px,p.cur.z-pz)/Math.max(dt,1e-3);
-  p.rot=lerpA(p.rot,p.trot,Math.min(1,dt*10));p.a.position.copy(p.cur);p.a.rotation.y=p.rot;AX.walk(p.a,p.cur.y>.01||spd<.3?0:spd,dt);
+  p.rot=lerpA(p.rot,p.trot,Math.min(1,dt*10));p.a.position.copy(p.cur);p.a.rotation.y=p.rot;AX.walk(p.a,p.dead||p.cur.y>.01||spd<.3?0:spd,dt);p.a.rotation.z+=((p.dead?Math.PI/2:0)-p.a.rotation.z)*Math.min(1,dt*9);
   p.l.position.set(p.cur.x,2.45+p.cur.y,p.cur.z);bubTick(p,p.cur.x,3.2+p.cur.y,p.cur.z,true,dt);});}
 
 const BOTN=[['Иван','3'],['Марина','2'],['Алексей','5'],['Светлана','1'],['Пётр','4'],['Дарья','2'],['Николай','3'],['Руслан','1']];
@@ -786,6 +791,32 @@ const bots=BOTN.map((b,i)=>{const cols=['#7b5aa6','#3d6db0','#e07b22','#2f3442',
   a.position.set(-22+i*6.5,0,(Math.random()-.5)*2.4);scene.add(a);
   const l=makeLabel(1.9,{bg:'rgba(255,255,255,.88)',fg:'#16231b',sub:'#2e6a3e'});l.userData.draw(b[0],'ур.'+b[1]);scene.add(l);
   return {a,l,n:b[0],lv:+b[1],xp:0,q:[{wait:Math.random()*4}],act:'walk',away:false,spd:1.1+Math.random()*.7};});
+
+const PLAYER_BOUNDS={minX:-HX+.8,maxX:HX-1.2,minZ:-HZ+1,maxZ:HZ-1};
+const BOT_BOUNDS={minX:-HX+.8,maxX:36,minZ:-HZ+1,maxZ:HZ-1};
+function playerRadius(){return S.tree?.62:.35;}
+function pavilionAgents(){const agents=[];
+  if(!ME.dead)agents.push({position:player.pos,radius:playerRadius(),weight:camMode==='follow'&&!blocked()?1:0,bounds:PLAYER_BOUNDS,y:player.y,player:true});
+  bots.forEach(bot=>{if(bot.on&&!bot.away&&!bot.deadUntil)agents.push({position:bot.a.position,radius:.32,weight:1,bounds:BOT_BOUNDS,y:0,bot});});
+  NET.peers.forEach((peer,id)=>{if(peer.seen&&peer.w==='hall'&&!peer.dead)agents.push({position:peer.cur,radius:peer.radius||.35,weight:0,y:peer.cur.y,peer,id});});
+  return agents;}
+function knockoutPlayer(){if(ME.dead)return;ME.dead=true;ME.reviveAt=performance.now()+4000;player.vy=0;
+  for(const key in keys)keys[key]=false;joyV={x:0,y:0};player.label.userData.draw(S.nick,'Возрождение…');netTrack(true);
+  logEvent('Чёрт коснулся персонажа: возрождение у входа');toast('Вы выбыли от касания чёрта. Через <b>4 секунды</b> вернётесь ко входу');}
+function reviveCharacters(now){if(ME.dead&&now>=ME.reviveAt){ME.dead=false;player.pos.set(-24,0,0);player.y=0;player.vy=0;player.obj.rotation.z=0;
+    player.label.userData.draw(S.nick,subLabel());netTrack(true);toast('Вы снова на выставке');}
+  bots.forEach((bot,index)=>{if(bot.deadUntil&&now>=bot.deadUntil){bot.deadUntil=0;bot.away=false;bot.a.position.set(-24,0,-1.6+index*.45);bot.a.rotation.z=0;bot.q=[{wait:1}];bot.act='walk';bot.l.userData.draw(bot.n,'ур.'+bot.lv);}});}
+function devilContacts(now,agents){const attackers=[];
+  if(ME.admin&&!S.elf&&!S.tree&&!ME.dead&&camMode==='follow'&&!blocked())attackers.push({position:player.pos,radius:playerRadius(),y:player.y,local:true});
+  agents.forEach(agent=>{if(agent.peer&&agent.peer.devil)attackers.push(agent);});
+  for(const attacker of attackers)for(const victim of agents){
+    if(victim.position===attacker.position||!PavilionPhysics.touching(attacker,victim,.09))continue;
+    if(victim.bot&&!victim.bot.deadUntil){victim.bot.deadUntil=now+4000;victim.bot.q=[];victim.bot.l.userData.draw(victim.bot.n,'Возрождение…');}
+    else if(victim.player&&!attacker.local)knockoutPlayer();
+    else if(attacker.local&&victim.peer&&NET.on&&now-(ME.hits.get(victim.id)||-Infinity)>800){ME.hits.set(victim.id,now);
+      NET.ch.send({type:'broadcast',event:'devil-touch',payload:{from:S.vid,to:victim.id}});}
+  }
+}
 
 /* поведение ботов */
 // Каждый бот выбирает занятие (стенд, квиз, табло, кофе, скамейка, поле, разговор, прогулка) и идёт к нему через центральный проход.
@@ -813,10 +844,12 @@ function botChat(b){const o=bots.find(x=>x!==b&&x.act==='walk'&&!x.away&&Math.ab
 function botTick(b,dt){const s=b.q[0],P=b.a.position;
   if(!s){if(b.act==='stand'||b.act==='quiz'){b.xp++;if(b.xp%3===0)b.l.userData.draw(b.n,'ур.'+(++b.lv));}botPlan(b);return;}
   if(s.to){const dx=s.to[0]-P.x,dz=s.to[1]-P.z,l=Math.hypot(dx,dz);
-    if(l<.25){b.q.shift();return;}const st=Math.min(l,b.spd*dt);P.x+=dx/l*st;P.z+=dz/l*st;b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(dx,dz),Math.min(1,dt*8));AX.walk(b.a,b.spd,dt);}
+    if(l<.25){b.q.shift();return;}const st=Math.min(l,b.spd*dt),obstacles=colliders.concat(pavilionAgents().filter(agent=>agent.bot!==b).map(agent=>({x:agent.position.x,z:agent.position.z,r:agent.radius})));
+    const direction=PavilionPhysics.steer(P,dx,dz,.32,obstacles);PavilionPhysics.move(P,direction.x*st,direction.z*st,.32,colliders,BOT_BOUNDS);
+    b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(direction.x,direction.z),Math.min(1,dt*8));}
   else if(s.away!==undefined){b.away=true;s.away-=dt;if(s.away<=0){b.away=false;b.q.shift();}}
   else{if(!s.said){s.said=true;const ch=b.act==='chat'?.85:b.act==='stand'?.3:0;if(Math.random()<ch)setTimeout(()=>say(b,pick(b.act==='chat'?[0,5,1,4]:[1,3,2])),rn(300,2500));}
-    if(s.face)b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(s.face[0]-P.x,s.face[1]-P.z),Math.min(1,dt*5));AX.walk(b.a,0,dt);s.wait-=dt;if(s.wait<=0)b.q.shift();}}
+    if(s.face)b.a.rotation.y=lerpA(b.a.rotation.y,Math.atan2(s.face[0]-P.x,s.face[1]-P.z),Math.min(1,dt*5));s.wait-=dt;if(s.wait<=0)b.q.shift();}}
 
 
 /* ================= РЕАКЦИИ ================= */
@@ -1136,6 +1169,7 @@ const RACE=AX.createRace({renderer:mkRenderer,models:EXPO,best:model=>S.raceBest
 const SKIN_CAM={active:false,previous:null};
 function toggleSkinCamera(){
   if(camMode!=='follow')return;
+  if(ME.dead)return;
   closeSheet();
   if(SKIN_CAM.active){SKIN_CAM.active=false;({yaw,pitch,dist}=SKIN_CAM.previous);}
   else{SKIN_CAM.previous={yaw,pitch,dist};SKIN_CAM.active=true;dist=2.8;pitch=.08;yaw=Math.atan2(-Math.cos(player.rot),-Math.sin(player.rot));
@@ -1195,10 +1229,11 @@ const jend=()=>{jp=null;joyV={x:0,y:0};knob.style.transform='';};joy.addEventLis
 function jmove(e){const r=joy.getBoundingClientRect();let x=(e.clientX-r.left-r.width/2)/(r.width/2),y=(e.clientY-r.top-r.height/2)/(r.height/2);const l=Math.hypot(x,y);if(l>1){x/=l;y/=l;}joyV={x,y};knob.style.transform=`translate(${x*34}px,${y*34}px)`;}
 $('#promptBtn').onclick=()=>{if(curInter)doInter(curInter);};
 
-const blocked=()=>!$('#reg').hidden||!$('#drive').hidden||!$('#dash').hidden||!$('#fieldtool').hidden||RACE.active;
+const blocked=()=>!$('#reg').hidden||!$('#drive').hidden||!$('#dash').hidden||!$('#fieldtool').hidden||RACE.active||ME.dead;
 let curInter=null;
 function nearestTractor(){let best=null,bd=7;inter.forEach(it=>{if(it.kind!=='tractor')return;const d=Math.hypot(player.pos.x-it.pos.x,player.pos.z-it.pos.z);if(d<bd){bd=d;best=it.t;}});return best;}
 function doInter(it){
+  if(ME.dead)return;
   if(it.kind==='tractor')sheetTractor(it.t);else if(it.kind==='kiosk')openDrive(it.t);else if(it.kind==='faq')sheetFAQ();
   else if(it.kind==='desk')sheetFarm();else if(it.kind==='gate')openDrive();else if(it.kind==='quiz')sheetQuiz();
   else if(it.kind==='coffee'){if(!award('coffee_'+new Date().toLocaleDateString('sv'),5,'Кофе за счёт выставки'))toast('Ещё чашку? Баллы за кофе — один раз в день');}
@@ -1260,25 +1295,32 @@ function tick(now){
   if(RACE.active){RACE.tick(dt);return;}
   if(!$('#drive').hidden){fieldTick(now,dt);return;}
   if(!$('#dash').hidden||!$('#fieldtool').hidden)return;
+  reviveCharacters(now);
   const t=now/1000;
+  const previousPlayer={x:player.pos.x,z:player.pos.z};
   let mvx=0,mvz=0;const canMove=camMode==='follow'&&!blocked();
   if(canMove){if(keys.KeyW)mvz+=1;if(keys.KeyS)mvz-=1;if(keys.KeyA)mvx-=1;if(keys.KeyD)mvx+=1;mvx+=joyV.x;mvz-=joyV.y;
     if(keys.ArrowLeft){yaw-=dt*2.2;lastManual=now;}if(keys.ArrowRight){yaw+=dt*2.2;lastManual=now;}
     if(keys.ArrowUp)dist=clamp(dist*Math.exp(-dt*1.5),.35,32);if(keys.ArrowDown)dist=clamp(dist*Math.exp(dt*1.5),.35,32);}
   const fw=new V3(Math.cos(yaw),0,Math.sin(yaw)),rt=new V3(-Math.sin(yaw),0,Math.cos(yaw));
   const mv=fw.multiplyScalar(mvz).add(rt.multiplyScalar(mvx));const ml=Math.min(1,mv.length());let spd=0;
-  if(ml>.05){mv.normalize();spd=(keys.ShiftLeft||keys.ShiftRight?8.5:4.8)*ml;player.pos.addScaledVector(mv,spd*dt);
+  if(ml>.05){mv.normalize();spd=(keys.ShiftLeft||keys.ShiftRight?8.5:4.8)*ml;PavilionPhysics.move(player.pos,mv.x*spd*dt,mv.z*spd*dt,playerRadius(),colliders,PLAYER_BOUNDS);
     player.rot=lerpA(player.rot,Math.atan2(mv.x,mv.z),Math.min(1,dt*12));
     if(!SKIN_CAM.active&&now-lastManual>900&&!(mvz<0&&Math.abs(mvx)<.1))yaw=lerpA(yaw,Math.atan2(mv.z,mv.x),Math.min(1,dt*1.8));}
-  colliders.forEach(c=>{const dx=player.pos.x-c.x,dz=player.pos.z-c.z,l=Math.hypot(dx,dz),m=c.r+.35;if(l<m&&l>1e-4){player.pos.x=c.x+dx/l*m;player.pos.z=c.z+dz/l*m;}});
-  player.pos.x=clamp(player.pos.x,-HX+.8,HX-1.2);player.pos.z=clamp(player.pos.z,-HZ+1,HZ-1);
+  if(!ME.dead)PavilionPhysics.constrain(player.pos,playerRadius(),colliders,PLAYER_BOUNDS);
   player.vy-=16*dt;player.y=Math.max(0,player.y+player.vy*dt);if(player.y<=0)player.vy=0;
-  player.obj.position.set(player.pos.x,player.y,player.pos.z);player.obj.rotation.y=player.rot;AX.walk(player.obj,player.y>0?0:spd,dt);
-  player.label.position.set(player.pos.x,2.45+player.y,player.pos.z);bubTick(player,player.pos.x,3.2+player.y,player.pos.z,true,dt);
   // живых игроков больше — ботов меньше (минимум трое, чтобы павильон не пустел)
   const nb=bots.length-Math.min(NET.peers.size,bots.length-3);
-  bots.forEach((b,i)=>{b.on=i<nb;b.a.visible=b.l.visible=b.on&&!b.away;if(b.bub&&!b.a.visible)b.bub.visible=false;if(!b.on)return;botTick(b,dt);b.l.position.set(b.a.position.x,2.35,b.a.position.z);bubTick(b,b.a.position.x,3.05,b.a.position.z,!b.away,dt);});
+  const previousBots=bots.map(bot=>({x:bot.a.position.x,z:bot.a.position.z}));
+  bots.forEach((b,i)=>{b.on=i<nb;b.a.visible=b.l.visible=b.on&&!b.away;if(b.bub&&!b.a.visible)b.bub.visible=false;if(!b.on||b.deadUntil)return;botTick(b,dt);});
   netUpdate(dt);
+  const agents=pavilionAgents();PavilionPhysics.solve(agents,colliders);devilContacts(now,agents);
+  const actualSpeed=Math.min(8.5,Math.hypot(player.pos.x-previousPlayer.x,player.pos.z-previousPlayer.z)/Math.max(dt,.001));
+  player.obj.position.set(player.pos.x,player.y,player.pos.z);player.obj.rotation.y=player.rot;player.obj.rotation.z+=((ME.dead?Math.PI/2:0)-player.obj.rotation.z)*Math.min(1,dt*9);AX.walk(player.obj,ME.dead||player.y>0?0:actualSpeed,dt);
+  player.label.position.set(player.pos.x,2.45+player.y,player.pos.z);bubTick(player,player.pos.x,3.2+player.y,player.pos.z,!ME.dead,dt);
+  bots.forEach((bot,index)=>{if(!bot.on)return;const previous=previousBots[index],walkSpeed=Math.min(3,Math.hypot(bot.a.position.x-previous.x,bot.a.position.z-previous.z)/Math.max(dt,.001));
+    AX.walk(bot.a,bot.deadUntil?0:walkSpeed,dt);bot.a.rotation.z+=((bot.deadUntil?Math.PI/2:0)-bot.a.rotation.z)*Math.min(1,dt*9);
+    bot.l.position.set(bot.a.position.x,2.35,bot.a.position.z);bubTick(bot,bot.a.position.x,3.05,bot.a.position.z,!bot.away&&!bot.deadUntil,dt);});
   spinners.forEach(s=>{if(s.on)s.turn.rotation.y+=dt*.22;});
   Object.values(stands).forEach(s=>{s.tr.userData.update(dt,t);if(s.tr.userData.engineOn){const e=new V3();s.tr.userData.exhaust.getWorldPosition(e);showSmoke.emit(e,14,dt);}});
   showSmoke.update(dt);burstSys.update(dt);
